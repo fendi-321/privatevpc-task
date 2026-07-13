@@ -1,0 +1,81 @@
+stages:
+  - perimeter-validate
+  - perimeter-plan
+  - perimeter-apply
+  - devops-validate
+  - devops-plan
+  - devops-apply
+
+default:
+  image:
+    name: hashicorp/terraform:latest
+    entrypoint:
+      - '/usr/bin/env'
+      - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+before_script:
+  - export AWS_ACCESS_KEY_ID
+  - export AWS_SECRET_ACCESS_KEY
+  - export AWS_REGION="ap-southeast-1"
+  - rm -rf .terraform
+  - terraform --version
+
+# PERIMETER JOBS
+perimeter-network-validate:
+  stage: perimeter-validate
+  script:
+    - cd Perimeter
+    - terraform init -backend=false
+    - terraform validate
+
+perimeter-network-plan:
+  stage: perimeter-plan
+  script:
+    - cd Perimeter
+    - terraform init
+    - terraform plan -out=plan.tfplan
+  artifacts:
+    paths:
+      - Perimeter/plan.tfplan
+
+perimeter-network-apply:
+  stage: perimeter-apply
+  script:
+    - cd Perimeter
+    - terraform init
+    - terraform apply -auto-approve plan.tfplan
+    - echo "TF_VAR_tgw_id=$(terraform output -raw tgw_id)" >> perimeter.env
+    - echo "TF_VAR_perimeter_vpc_cidr=$(terraform output -raw perimeter_vpc_cidr)" >> perimeter.env
+  artifacts:
+    reports:
+      dotenv: Perimeter/perimeter.env
+  dependencies:
+    - perimeter-network-plan
+
+# DEVOPS JOBS
+devops-network-validate:
+  stage: devops-validate
+  script:
+    - cd DevOps
+    - terraform init -backend=false
+    - terraform validate
+
+devops-network-plan:
+  stage: devops-plan
+  script:
+    - cd DevOps
+    - terraform init
+    - terraform plan -out=plan.tfplan
+  artifacts:
+    paths:
+      - DevOps/plan.tfplan
+
+devops-network-apply:
+  stage: devops-apply
+  script:
+    - cd DevOps
+    - terraform init
+    - terraform apply -auto-approve plan.tfplan
+  dependencies:
+    - devops-network-plan
+  when: manual

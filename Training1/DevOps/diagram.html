@@ -1,0 +1,260 @@
+<![CDATA[<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Training1/DevOps Terraform Graph</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0b1020;
+      color: #e6e6e6;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    #container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+    }
+    #header {
+      padding: 8px 12px;
+      background: #11162a;
+      border-bottom: 1px solid #222a48;
+      font-size: 14px;
+    }
+    #graph {
+      flex: 1;
+      overflow: hidden;
+    }
+    #graph svg {
+      width: 100%;
+      height: 100%;
+      background: #0b1020;
+    }
+    .hint {
+      opacity: 0.7;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    pre#error {
+      color: #ff6b6b;
+      white-space: pre-wrap;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="header">
+      Terraform dependency graph — Training1/DevOps
+      <span class="hint">Pan with mouse, scroll to zoom. Double-click to center.</span>
+    </div>
+    <div id="graph" aria-label="Terraform Graph Area"></div>
+  </div>
+
+  <!-- Viz.js (Graphviz port to WebAssembly) -->
+  <script src="https://unpkg.com/viz.js@2.1.2/viz.js"></script>
+  <script src="https://unpkg.com/viz.js@2.1.2/full.render.js"></script>
+  <!-- SVG Pan/Zoom controls -->
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+
+  <script>
+    // Embedded DOT produced by `terraform graph`
+    const dot = `digraph {
+	compound = "true"
+	newrank = "true"
+	subgraph "root" {
+		"[root] aws_ec2_transit_gateway_vpc_attachment.devops (expand)" [label = "aws_ec2_transit_gateway_vpc_attachment.devops", shape = "box"]
+		"[root] aws_iam_instance_profile.ec2_ssm_profile (expand)" [label = "aws_iam_instance_profile.ec2_ssm_profile", shape = "box"]
+		"[root] aws_iam_role.ec2_ssm_role (expand)" [label = "aws_iam_role.ec2_ssm_role", shape = "box"]
+		"[root] aws_iam_role_policy_attachment.ssm_managed_instance_core (expand)" [label = "aws_iam_role_policy_attachment.ssm_managed_instance_core", shape = "box"]
+		"[root] aws_instance.devops_instance (expand)" [label = "aws_instance.devops_instance", shape = "box"]
+		"[root] aws_route.devops_private_tgw (expand)" [label = "aws_route.devops_private_tgw", shape = "box"]
+		"[root] aws_route.devops_tgw_perimeter (expand)" [label = "aws_route.devops_tgw_perimeter", shape = "box"]
+		"[root] aws_security_group.ssm_endpoint_sg (expand)" [label = "aws_security_group.ssm_endpoint_sg", shape = "box"]
+		"[root] aws_vpc_endpoint.ssm (expand)" [label = "aws_vpc_endpoint.ssm", shape = "box"]
+		"[root] data.aws_ami.amazon_linux_2 (expand)" [label = "data.aws_ami.amazon_linux_2", shape = "box"]
+		"[root] data.aws_region.current (expand)" [label = "data.aws_region.current", shape = "box"]
+		"[root] data.terraform_remote_state.perimeter (expand)" [label = "data.terraform_remote_state.perimeter", shape = "box"]
+		"[root] module.devops_subnet.aws_subnet.main (expand)" [label = "module.devops_subnet.aws_subnet.main", shape = "box"]
+		"[root] module.devops_subnet.module.nacl.aws_network_acl.main (expand)" [label = "module.devops_subnet.module.nacl.aws_network_acl.main", shape = "box"]
+		"[root] module.devops_subnet.module.nacl.aws_network_acl_association.main (expand)" [label = "module.devops_subnet.module.nacl.aws_network_acl_association.main", shape = "box"]
+		"[root] module.devops_subnet.module.rt.aws_route_table.main (expand)" [label = "module.devops_subnet.module.rt.aws_route_table.main", shape = "box"]
+		"[root] module.devops_subnet.module.rt.aws_route_table_association.main (expand)" [label = "module.devops_subnet.module.rt.aws_route_table_association.main", shape = "box"]
+		"[root] module.tgwa_devops_subnet.aws_subnet.main (expand)" [label = "module.tgwa_devops_subnet.aws_subnet.main", shape = "box"]
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl.main (expand)" [label = "module.tgwa_devops_subnet.module.nacl.aws_network_acl.main", shape = "box"]
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main (expand)" [label = "module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main", shape = "box"]
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table.main (expand)" [label = "module.tgwa_devops_subnet.module.rt.aws_route_table.main", shape = "box"]
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table_association.main (expand)" [label = "module.tgwa_devops_subnet.module.rt.aws_route_table_association.main", shape = "box"]
+		"[root] module.vpc_devops.aws_vpc.main (expand)" [label = "module.vpc_devops.aws_vpc.main", shape = "box"]
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"]" [label = "provider[\\"registry.terraform.io/hashicorp/aws\\"]", shape = "diamond"]
+		"[root] provider[\\"terraform.io/builtin/terraform\\"]" [label = "provider[\\"terraform.io/builtin/terraform\\"]", shape = "diamond"]
+		"[root] aws_ec2_transit_gateway_vpc_attachment.devops (expand)" -> "[root] data.terraform_remote_state.perimeter (expand)"
+		"[root] aws_ec2_transit_gateway_vpc_attachment.devops (expand)" -> "[root] module.tgwa_devops_subnet.output.subnet_id (expand)"
+		"[root] aws_iam_instance_profile.ec2_ssm_profile (expand)" -> "[root] aws_iam_role.ec2_ssm_role (expand)"
+		"[root] aws_iam_role.ec2_ssm_role (expand)" -> "[root] provider[\\"registry.terraform.io/hashicorp/aws\\"]"
+		"[root] aws_iam_role_policy_attachment.ssm_managed_instance_core (expand)" -> "[root] aws_iam_role.ec2_ssm_role (expand)"
+		"[root] aws_instance.devops_instance (expand)" -> "[root] aws_iam_instance_profile.ec2_ssm_profile (expand)"
+		"[root] aws_instance.devops_instance (expand)" -> "[root] data.aws_ami.amazon_linux_2 (expand)"
+		"[root] aws_instance.devops_instance (expand)" -> "[root] module.devops_subnet.output.subnet_id (expand)"
+		"[root] aws_route.devops_private_tgw (expand)" -> "[root] data.terraform_remote_state.perimeter (expand)"
+		"[root] aws_route.devops_private_tgw (expand)" -> "[root] module.devops_subnet.output.route_table_id (expand)"
+		"[root] aws_route.devops_tgw_perimeter (expand)" -> "[root] data.terraform_remote_state.perimeter (expand)"
+		"[root] aws_route.devops_tgw_perimeter (expand)" -> "[root] module.tgwa_devops_subnet.output.route_table_id (expand)"
+		"[root] aws_security_group.ssm_endpoint_sg (expand)" -> "[root] module.vpc_devops.output.cidr_block (expand)"
+		"[root] aws_security_group.ssm_endpoint_sg (expand)" -> "[root] module.vpc_devops.output.vpc_id (expand)"
+		"[root] aws_vpc_endpoint.ssm (expand)" -> "[root] aws_security_group.ssm_endpoint_sg (expand)"
+		"[root] aws_vpc_endpoint.ssm (expand)" -> "[root] data.aws_region.current (expand)"
+		"[root] aws_vpc_endpoint.ssm (expand)" -> "[root] module.devops_subnet.output.subnet_id (expand)"
+		"[root] data.aws_ami.amazon_linux_2 (expand)" -> "[root] provider[\\"registry.terraform.io/hashicorp/aws\\"]"
+		"[root] data.aws_region.current (expand)" -> "[root] provider[\\"registry.terraform.io/hashicorp/aws\\"]"
+		"[root] data.terraform_remote_state.perimeter (expand)" -> "[root] provider[\\"terraform.io/builtin/terraform\\"]"
+		"[root] module.devops_subnet (close)" -> "[root] module.devops_subnet.module.nacl (close)"
+		"[root] module.devops_subnet (close)" -> "[root] module.devops_subnet.module.rt (close)"
+		"[root] module.devops_subnet (close)" -> "[root] module.devops_subnet.output.route_table_id (expand)"
+		"[root] module.devops_subnet (close)" -> "[root] module.devops_subnet.output.subnet_id (expand)"
+		"[root] module.devops_subnet.aws_subnet.main (expand)" -> "[root] module.devops_subnet.var.cidr_block (expand)"
+		"[root] module.devops_subnet.aws_subnet.main (expand)" -> "[root] module.devops_subnet.var.subnet_name (expand)"
+		"[root] module.devops_subnet.aws_subnet.main (expand)" -> "[root] module.devops_subnet.var.vpc_id (expand)"
+		"[root] module.devops_subnet.module.nacl (close)" -> "[root] module.devops_subnet.module.nacl.aws_network_acl_association.main (expand)"
+		"[root] module.devops_subnet.module.nacl (expand)" -> "[root] module.devops_subnet (expand)"
+		"[root] module.devops_subnet.module.nacl.aws_network_acl.main (expand)" -> "[root] module.devops_subnet.module.nacl.var.nacl_name (expand)"
+		"[root] module.devops_subnet.module.nacl.aws_network_acl.main (expand)" -> "[root] module.devops_subnet.module.nacl.var.vpc_id (expand)"
+		"[root] module.devops_subnet.module.nacl.aws_network_acl_association.main (expand)" -> "[root] module.devops_subnet.module.nacl.aws_network_acl.main (expand)"
+		"[root] module.devops_subnet.module.nacl.aws_network_acl_association.main (expand)" -> "[root] module.devops_subnet.module.nacl.var.subnet_id (expand)"
+		"[root] module.devops_subnet.module.nacl.var.nacl_name (expand)" -> "[root] module.devops_subnet.module.nacl (expand)"
+		"[root] module.devops_subnet.module.nacl.var.nacl_name (expand)" -> "[root] module.devops_subnet.var.subnet_name (expand)"
+		"[root] module.devops_subnet.module.nacl.var.subnet_id (expand)" -> "[root] module.devops_subnet.aws_subnet.main (expand)"
+		"[root] module.devops_subnet.module.nacl.var.subnet_id (expand)" -> "[root] module.devops_subnet.module.nacl (expand)"
+		"[root] module.devops_subnet.module.nacl.var.vpc_id (expand)" -> "[root] module.devops_subnet.module.nacl (expand)"
+		"[root] module.devops_subnet.module.nacl.var.vpc_id (expand)" -> "[root] module.devops_subnet.var.vpc_id (expand)"
+		"[root] module.devops_subnet.module.rt (close)" -> "[root] module.devops_subnet.module.rt.aws_route_table_association.main (expand)"
+		"[root] module.devops_subnet.module.rt (close)" -> "[root] module.devops_subnet.module.rt.output.route_table_id (expand)"
+		"[root] module.devops_subnet.module.rt (expand)" -> "[root] module.devops_subnet (expand)"
+		"[root] module.devops_subnet.module.rt.aws_route_table.main (expand)" -> "[root] module.devops_subnet.module.rt.var.route_table_name (expand)"
+		"[root] module.devops_subnet.module.rt.aws_route_table.main (expand)" -> "[root] module.devops_subnet.module.rt.var.vpc_id (expand)"
+		"[root] module.devops_subnet.module.rt.aws_route_table_association.main (expand)" -> "[root] module.devops_subnet.module.rt.aws_route_table.main (expand)"
+		"[root] module.devops_subnet.module.rt.aws_route_table_association.main (expand)" -> "[root] module.devops_subnet.module.rt.var.subnet_id (expand)"
+		"[root] module.devops_subnet.module.rt.output.route_table_id (expand)" -> "[root] module.devops_subnet.module.rt.aws_route_table.main (expand)"
+		"[root] module.devops_subnet.module.rt.var.route_table_name (expand)" -> "[root] module.devops_subnet.module.rt (expand)"
+		"[root] module.devops_subnet.module.rt.var.route_table_name (expand)" -> "[root] module.devops_subnet.var.subnet_name (expand)"
+		"[root] module.devops_subnet.module.rt.var.subnet_id (expand)" -> "[root] module.devops_subnet.aws_subnet.main (expand)"
+		"[root] module.devops_subnet.module.rt.var.subnet_id (expand)" -> "[root] module.devops_subnet.module.rt (expand)"
+		"[root] module.devops_subnet.module.rt.var.vpc_id (expand)" -> "[root] module.devops_subnet.module.rt (expand)"
+		"[root] module.devops_subnet.module.rt.var.vpc_id (expand)" -> "[root] module.devops_subnet.var.vpc_id (expand)"
+		"[root] module.devops_subnet.output.route_table_id (expand)" -> "[root] module.devops_subnet.module.rt.output.route_table_id (expand)"
+		"[root] module.devops_subnet.output.subnet_id (expand)" -> "[root] module.devops_subnet.aws_subnet.main (expand)"
+		"[root] module.devops_subnet.var.cidr_block (expand)" -> "[root] module.devops_subnet (expand)"
+		"[root] module.devops_subnet.var.subnet_name (expand)" -> "[root] module.devops_subnet (expand)"
+		"[root] module.devops_subnet.var.vpc_id (expand)" -> "[root] module.devops_subnet (expand)"
+		"[root] module.devops_subnet.var.vpc_id (expand)" -> "[root] module.vpc_devops.output.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet (close)" -> "[root] module.tgwa_devops_subnet.module.nacl (close)"
+		"[root] module.tgwa_devops_subnet (close)" -> "[root] module.tgwa_devops_subnet.module.rt (close)"
+		"[root] module.tgwa_devops_subnet (close)" -> "[root] module.tgwa_devops_subnet.output.route_table_id (expand)"
+		"[root] module.tgwa_devops_subnet (close)" -> "[root] module.tgwa_devops_subnet.output.subnet_id (expand)"
+		"[root] module.tgwa_devops_subnet.aws_subnet.main (expand)" -> "[root] module.tgwa_devops_subnet.var.cidr_block (expand)"
+		"[root] module.tgwa_devops_subnet.aws_subnet.main (expand)" -> "[root] module.tgwa_devops_subnet.var.subnet_name (expand)"
+		"[root] module.tgwa_devops_subnet.aws_subnet.main (expand)" -> "[root] module.tgwa_devops_subnet.var.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl (close)" -> "[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl (expand)" -> "[root] module.tgwa_devops_subnet (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl.main (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl.var.nacl_name (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl.main (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl.var.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl.var.subnet_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.nacl_name (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.nacl_name (expand)" -> "[root] module.tgwa_devops_subnet.var.subnet_name (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.subnet_id (expand)" -> "[root] module.tgwa_devops_subnet.aws_subnet.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.subnet_id (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.vpc_id (expand)" -> "[root] module.tgwa_devops_subnet.module.nacl (expand)"
+		"[root] module.tgwa_devops_subnet.module.nacl.var.vpc_id (expand)" -> "[root] module.tgwa_devops_subnet.var.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt (close)" -> "[root] module.tgwa_devops_subnet.module.rt.aws_route_table_association.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt (close)" -> "[root] module.tgwa_devops_subnet.module.rt.output.route_table_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt (expand)" -> "[root] module.tgwa_devops_subnet (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table.main (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.var.route_table_name (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table.main (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.var.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table_association.main (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.aws_route_table.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.aws_route_table_association.main (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.var.subnet_id (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.output.route_table_id (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.aws_route_table.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.route_table_name (expand)" -> "[root] module.tgwa_devops_subnet.module.rt (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.route_table_name (expand)" -> "[root] module.tgwa_devops_subnet.var.subnet_name (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.subnet_id (expand)" -> "[root] module.tgwa_devops_subnet.aws_subnet.main (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.subnet_id (expand)" -> "[root] module.tgwa_devops_subnet.module.rt (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.vpc_id (expand)" -> "[root] module.tgwa_devops_subnet.module.rt (expand)"
+		"[root] module.tgwa_devops_subnet.module.rt.var.vpc_id (expand)" -> "[root] module.tgwa_devops_subnet.var.vpc_id (expand)"
+		"[root] module.tgwa_devops_subnet.output.route_table_id (expand)" -> "[root] module.tgwa_devops_subnet.module.rt.output.route_table_id (expand)"
+		"[root] module.tgwa_devops_subnet.output.subnet_id (expand)" -> "[root] module.tgwa_devops_subnet.aws_subnet.main (expand)"
+		"[root] module.tgwa_devops_subnet.var.cidr_block (expand)" -> "[root] module.tgwa_devops_subnet (expand)"
+		"[root] module.tgwa_devops_subnet.var.subnet_name (expand)" -> "[root] module.tgwa_devops_subnet (expand)"
+		"[root] module.tgwa_devops_subnet.var.vpc_id (expand)" -> "[root] module.tgwa_devops_subnet (expand)"
+		"[root] module.tgwa_devops_subnet.var.vpc_id (expand)" -> "[root] module.vpc_devops.output.vpc_id (expand)"
+		"[root] module.vpc_devops (close)" -> "[root] module.vpc_devops.output.cidr_block (expand)"
+		"[root] module.vpc_devops (close)" -> "[root] module.vpc_devops.output.vpc_id (expand)"
+		"[root] module.vpc_devops.aws_vpc.main (expand)" -> "[root] module.vpc_devops.var.cidr_block (expand)"
+		"[root] module.vpc_devops.aws_vpc.main (expand)" -> "[root] module.vpc_devops.var.vpc_name (expand)"
+		"[root] module.vpc_devops.aws_vpc.main (expand)" -> "[root] provider[\\"registry.terraform.io/hashicorp/aws\\"]"
+		"[root] module.vpc_devops.output.cidr_block (expand)" -> "[root] module.vpc_devops.aws_vpc.main (expand)"
+		"[root] module.vpc_devops.output.vpc_id (expand)" -> "[root] module.vpc_devops.aws_vpc.main (expand)"
+		"[root] module.vpc_devops.var.cidr_block (expand)" -> "[root] module.vpc_devops (expand)"
+		"[root] module.vpc_devops.var.vpc_name (expand)" -> "[root] module.vpc_devops (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_ec2_transit_gateway_vpc_attachment.devops (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_iam_role_policy_attachment.ssm_managed_instance_core (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_instance.devops_instance (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_route.devops_private_tgw (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_route.devops_tgw_perimeter (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] aws_vpc_endpoint.ssm (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] module.devops_subnet.module.nacl.aws_network_acl_association.main (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] module.devops_subnet.module.rt.aws_route_table_association.main (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] module.tgwa_devops_subnet.module.nacl.aws_network_acl_association.main (expand)"
+		"[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)" -> "[root] module.tgwa_devops_subnet.module.rt.aws_route_table_association.main (expand)"
+		"[root] provider[\\"terraform.io/builtin/terraform\\"] (close)" -> "[root] data.terraform_remote_state.perimeter (expand)"
+		"[root] root" -> "[root] module.devops_subnet (close)"
+		"[root] root" -> "[root] module.tgwa_devops_subnet (close)"
+		"[root] root" -> "[root] module.vpc_devops (close)"
+		"[root] root" -> "[root] provider[\\"registry.terraform.io/hashicorp/aws\\"] (close)"
+		"[root] root" -> "[root] provider[\\"terraform.io/builtin/terraform\\"] (close)"
+	}
+}
+`;
+
+    // Render DOT to SVG and enable pan/zoom.
+    (function render() {
+      const container = document.getElementById('graph');
+      const viz = new Viz({ Module, render });
+
+      viz.renderSVGElement(dot)
+        .then(function(svgEl) {
+          container.innerHTML = "";
+          container.appendChild(svgEl);
+
+          // Enhance visibility for dark background
+          svgEl.style.background = "#0b1020";
+
+          // Initialize pan/zoom
+          const panZoom = svgPanZoom(svgEl, {
+            controlIconsEnabled: true,
+            fit: true,
+            center: true,
+            minZoom: 0.2,
+            maxZoom: 10
+          });
+
+          // Recenter on double-click
+          svgEl.addEventListener('dblclick', function() {
+            panZoom.fit();
+            panZoom.center();
+          });
+        })
+        .catch(function(err) {
+          const pre = document.createElement('pre');
+          pre.id = 'error';
+          pre.textContent = 'Failed to render graph via Viz.js:\\n' + (err && err.stack ? err.stack : err);
+          container.innerHTML = "";
+          container.appendChild(pre);
+        });
+    })();
+  </script>
+</body>
+</html>
+]]>

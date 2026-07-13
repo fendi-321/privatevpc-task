@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AWS Architecture Diagram (from TSX)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      background: #0f172a;
+      color: #e6e6e6;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    #root {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    #diagram-container {
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      border-radius: 8px;
+      background: #0f172a;
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="typescript,react">
+    const ArchitectureDiagram = () => {
+      return (
+        <div id="diagram-container">
+          <svg viewBox="0 0 900 650" width="900" height="650">
+            <defs>
+              {/* Gradients */}
+              <linearGradient id="vpcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1e3a5f" />
+                <stop offset="100%" stopColor="#0f2744" />
+              </linearGradient>
+              <linearGradient id="subnetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1a4d1a" />
+                <stop offset="100%" stopColor="#0d2d0d" />
+              </linearGradient>
+              <linearGradient id="tgwSubnetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#4a1a4a" />
+                <stop offset="100%" stopColor="#2d0d2d" />
+              </linearGradient>
+              <linearGradient id="perimeterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#5c3d1e" />
+                <stop offset="100%" stopColor="#3d280f" />
+              </linearGradient>
+              
+              {/* Arrow marker */}
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa" />
+              </marker>
+              <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#f97316" />
+              </marker>
+            </defs>
+
+            {/* Background */}
+            <rect width="900" height="650" fill="#0f172a" />
+
+            {/* AWS Cloud boundary */}
+            <rect x="20" y="20" width="860" height="610" rx="15" fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="8,4" />
+            <text x="40" y="50" fill="#f97316" fontSize="16" fontWeight="bold">☁️ AWS Cloud - ap-southeast-1</text>
+
+            {/* Perimeter VPC (Remote State) */}
+            <rect x="600" y="70" width="250" height="180" rx="10" fill="url(#perimeterGrad)" stroke="#f97316" strokeWidth="2" />
+            <text x="620" y="100" fill="#fb923c" fontSize="14" fontWeight="bold">Perimeter VPC</text>
+            <text x="620" y="118" fill="#a3a3a3" fontSize="10">(Remote State)</text>
+            <text x="620" y="134" fill="#a3a3a3" fontSize="10">CIDR: 100.125.100.0/24</text>
+            
+            {/* Transit Gateway in Perimeter */}
+            <rect x="650" y="140" width="160" height="80" rx="8" fill="#1e1e2e" stroke="#a855f7" strokeWidth="2" />
+            <text x="730" y="170" fill="#c084fc" fontSize="12" fontWeight="bold" textAnchor="middle">🔀 Transit Gateway</text>
+            <text x="730" y="188" fill="#a3a3a3" fontSize="9" textAnchor="middle">aws_ec2_transit_gateway</text>
+            <text x="730" y="205" fill="#a3a3a3" fontSize="9" textAnchor="middle">Hub for VPC connectivity</text>
+
+            {/* DevOps VPC */}
+            <rect x="40" y="70" width="530" height="520" rx="10" fill="url(#vpcGrad)" stroke="#3b82f6" strokeWidth="2" />
+            <text x="60" y="100" fill="#60a5fa" fontSize="14" fontWeight="bold">🌐 VPC DevOps</text>
+            <text x="60" y="118" fill="#a3a3a3" fontSize="10">module.vpc_devops</text>
+            <text x="60" y="134" fill="#a3a3a3" fontSize="10">CIDR: 100.126.100.0/24</text>
+
+            {/* DevOps Private Subnet */}
+            <rect x="60" y="140" width="350" height="280" rx="8" fill="url(#subnetGrad)" stroke="#22c55e" strokeWidth="2" />
+            <text x="80" y="165" fill="#4ade80" fontSize="12" fontWeight="bold">📦 DevOps Private Subnet</text>
+            <text x="80" y="180" fill="#a3a3a3" fontSize="9">module.devops_subnet</text>
+            <text x="80" y="194" fill="#a3a3a3" fontSize="9">CIDR: 100.126.100.0/27</text>
+
+            {/* NACL badge */}
+            <rect x="320" y="150" width="70" height="22" rx="4" fill="#164e63" stroke="#22d3d1" strokeWidth="1" />
+            <text x="355" y="165" fill="#22d3d1" fontSize="9" textAnchor="middle">🛡️ NACL</text>
+
+            {/* Route Table badge */}
+            <rect x="240" y="150" width="70" height="22" rx="4" fill="#3f3f46" stroke="#a1a1aa" strokeWidth="1" />
+            <text x="275" y="165" fill="#a1a1aa" fontSize="9" textAnchor="middle">📍 RT</text>
+
+            {/* EC2 Instance */}
+            <rect x="90" y="200" width="180" height="100" rx="8" fill="#1e1e2e" stroke="#f59e0b" strokeWidth="2" />
+            <text x="180" y="230" fill="#fbbf24" fontSize="12" fontWeight="bold" textAnchor="middle">💻 EC2 Instance</text>
+            <text x="180" y="248" fill="#a3a3a3" fontSize="9" textAnchor="middle">aws_instance.devops_instance</text>
+            <text x="180" y="265" fill="#a3a3a3" fontSize="9" textAnchor="middle">Amazon Linux 2</text>
+            <text x="180" y="282" fill="#ec4899" fontSize="9" textAnchor="middle">IAM: ec2_ssm_profile</text>
+
+            {/* VPC Endpoint SSM */}
+            <rect x="90" y="320" width="180" height="80" rx="8" fill="#1e1e2e" stroke="#84cc16" strokeWidth="2" />
+            <text x="180" y="350" fill="#a3e635" fontSize="11" fontWeight="bold" textAnchor="middle">🔌 VPC Endpoint</text>
+            <text x="180" y="368" fill="#a3a3a3" fontSize="9" textAnchor="middle">aws_vpc_endpoint.ssm</text>
+            <text x="180" y="385" fill="#a3a3a3" fontSize="9" textAnchor="middle">SSM Private Access</text>
+
+            {/* Security Group */}
+            <rect x="290" y="250" width="100" height="60" rx="6" fill="#1e1e2e" stroke="#f97316" strokeWidth="1.5" />
+            <text x="340" y="275" fill="#fb923c" fontSize="10" fontWeight="bold" textAnchor="middle">🔒 SG</text>
+            <text x="340" y="292" fill="#a3a3a3" fontSize="8" textAnchor="middle">ssm_endpoint_sg</text>
+
+            {/* TGW Attachment Subnet */}
+            <rect x="60" y="440" width="350" height="130" rx="8" fill="url(#tgwSubnetGrad)" stroke="#a855f7" strokeWidth="2" />
+            <text x="80" y="465" fill="#c084fc" fontSize="12" fontWeight="bold">🔗 TGW Attachment Subnet</text>
+            <text x="80" y="480" fill="#a3a3a3" fontSize="9">module.tgwa_devops_subnet</text>
+            <text x="80" y="494" fill="#a3a3a3" fontSize="9">CIDR: 100.126.100.240/28</text>
+
+            {/* NACL badge for TGW subnet */}
+            <rect x="320" y="450" width="70" height="22" rx="4" fill="#164e63" stroke="#22d3d1" strokeWidth="1" />
+            <text x="355" y="465" fill="#22d3d1" fontSize="9" textAnchor="middle">🛡️ NACL</text>
+
+            {/* TGW Attachment */}
+            <rect x="100" y="500" width="200" height="55" rx="6" fill="#1e1e2e" stroke="#a855f7" strokeWidth="2" />
+            <text x="200" y="522" fill="#c084fc" fontSize="10" fontWeight="bold" textAnchor="middle">TGW VPC Attachment</text>
+            <text x="200" y="540" fill="#a3a3a3" fontSize="8" textAnchor="middle">aws_ec2_transit_gateway_vpc_attachment</text>
+
+            {/* IAM Section */}
+            <rect x="430" y="140" width="120" height="160" rx="8" fill="#1e1e2e" stroke="#ec4899" strokeWidth="2" />
+            <text x="490" y="165" fill="#f472b6" fontSize="11" fontWeight="bold" textAnchor="middle">👤 IAM</text>
+            <text x="490" y="185" fill="#a3a3a3" fontSize="8" textAnchor="middle">ec2_ssm_role</text>
+            <text x="490" y="200" fill="#a3a3a3" fontSize="8" textAnchor="middle">↓</text>
+            <text x="490" y="215" fill="#a3a3a3" fontSize="8" textAnchor="middle">ec2_ssm_profile</text>
+            <text x="490" y="230" fill="#a3a3a3" fontSize="8" textAnchor="middle">↓</text>
+            <text x="490" y="245" fill="#a3a3a3" fontSize="8" textAnchor="middle">SSM Policy</text>
+            <rect x="445" y="260" width="90" height="25" rx="4" fill="#be185d" />
+            <text x="490" y="277" fill="#fff" fontSize="8" textAnchor="middle">Managed Core</text>
+
+            {/* Routes */}
+            <rect x="430" y="320" width="120" height="80" rx="8" fill="#1e1e2e" stroke="#06b6d4" strokeWidth="2" />
+            <text x="490" y="345" fill="#22d3d1" fontSize="11" fontWeight="bold" textAnchor="middle">🛤️ Routes</text>
+            <text x="490" y="365" fill="#a3a3a3" fontSize="8" textAnchor="middle">devops_private_tgw</text>
+            <text x="490" y="380" fill="#a3a3a3" fontSize="8" textAnchor="middle">devops_tgw_perimeter</text>
+
+            {/* Connection Lines */}
+            {/* TGW Attachment to Transit Gateway */}
+            <line x1="300" y1="527" x2="650" y2="180" stroke="#a855f7" strokeWidth="2" strokeDasharray="5,3" markerEnd="url(#arrowhead)" />
+            
+            {/* Route to TGW */}
+            <line x1="550" y1="360" x2="650" y2="200" stroke="#06b6d4" strokeWidth="1.5" strokeDasharray="4,2" markerEnd="url(#arrowhead)" />
+
+            {/* EC2 to VPC Endpoint */}
+            <line x1="180" y1="300" x2="180" y2="320" stroke="#84cc16" strokeWidth="1.5" />
+
+            {/* IAM to EC2 */}
+            <line x1="430" y1="220" x2="270" y2="250" stroke="#ec4899" strokeWidth="1.5" strokeDasharray="3,2" />
+
+            {/* SG to VPC Endpoint */}
+            <line x1="290" y1="290" x2="270" y2="340" stroke="#f97316" strokeWidth="1" strokeDasharray="3,2" />
+
+            {/* Legend */}
+            <rect x="620" y="280" width="230" height="200" rx="8" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+            <text x="640" y="305" fill="#94a3b8" fontSize="11" fontWeight="bold">Legend</text>
+            
+            <rect x="640" y="320" width="12" height="12" fill="#3b82f6" />
+            <text x="660" y="330" fill="#a3a3a3" fontSize="9">VPC</text>
+            
+            <rect x="640" y="340" width="12" height="12" fill="#22c55e" />
+            <text x="660" y="350" fill="#a3a3a3" fontSize="9">Private Subnet</text>
+            
+            <rect x="640" y="360" width="12" height="12" fill="#a855f7" />
+            <text x="660" y="370" fill="#a3a3a3" fontSize="9">TGW Attachment Subnet</text>
+            
+            <rect x="640" y="380" width="12" height="12" fill="#f59e0b" />
+            <text x="660" y="390" fill="#a3a3a3" fontSize="9">EC2 Instance</text>
+            
+            <rect x="640" y="400" width="12" height="12" fill="#84cc16" />
+            <text x="660" y="410" fill="#a3a3a3" fontSize="9">VPC Endpoint</text>
+            
+            <rect x="640" y="420" width="12" height="12" fill="#ec4899" />
+            <text x="660" y="430" fill="#a3a3a3" fontSize="9">IAM Resources</text>
+
+            <rect x="640" y="440" width="12" height="12" fill="#22d3d1" />
+            <text x="660" y="450" fill="#a3a3a3" fontSize="9">NACL / Security</text>
+
+            <line x1="640" y1="466" x2="660" y2="466" stroke="#a855f7" strokeWidth="2" strokeDasharray="4,2" />
+            <text x="670" y="470" fill="#a3a3a3" fontSize="9">TGW Connection</text>
+
+            {/* Title */}
+            <text x="450" y="630" fill="#64748b" fontSize="10" textAnchor="middle">DevOps Infrastructure - Terraform Managed</text>
+          </svg>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ArchitectureDiagram />);
+  </script>
+</body>
+</html>
