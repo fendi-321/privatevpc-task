@@ -803,7 +803,7 @@ terraform output
 
 **Owner:** Muhamad Affindi bin Kamarudin
 
-**Repository:** inphosoft_test
+**Repository:** privatevpc-task
 
 **For Questions or Issues:**
 - Review this documentation
