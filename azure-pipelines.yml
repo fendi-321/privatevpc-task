@@ -6,6 +6,13 @@
 #   2. Perimeter - init, plan, apply the hub VPC   (approval gated)
 #   3. DevOps    - init, plan, apply the spoke VPC (approval gated, after hub)
 #
+# COST SAFETY: apply is opt-in. The pipeline plans on every run, but it only
+# applies when the run is queued with the `apply` parameter set to true - the
+# same shape as `TF_APPLY=true` in buildspec.yml. A default/triggered run
+# therefore creates nothing, so a forgotten environment approval can never
+# stand up the perimeter network (NAT gateway + Transit Gateway attachments)
+# and start charging.
+#
 # One-time setup in Azure DevOps:
 #   1. Pipelines -> Library -> Variable group `aws-terraform` containing:
 #        AWS_ACCESS_KEY_ID      (secret)
@@ -47,6 +54,12 @@ parameters:
     displayName: 'Self-hosted agent pool (blank = Microsoft-hosted ubuntu-latest)'
     type: string
     default: ''
+  # Plan-only by default. Set this to true at queue time to actually apply -
+  # it is the Azure equivalent of the CodeBuild project's TF_APPLY variable.
+  - name: apply
+    displayName: 'Apply the plans (off = plan-only, nothing is created)'
+    type: boolean
+    default: false
 
 variables:
   - group: aws-terraform
@@ -108,14 +121,30 @@ stages:
                     cd Training1/Perimeter
                     terraform init -input=false -lock-timeout=5m
                     terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan
-                    terraform apply -input=false -lock-timeout=5m -auto-approve perimeter.tfplan
                     terraform output
-                  displayName: 'terraform init / plan / apply (Perimeter)'
+                  displayName: 'terraform init / plan (Perimeter)'
                   env:
                     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
                     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
                     AWS_REGION: $(AWS_REGION)
                     AWS_DEFAULT_REGION: $(AWS_REGION)
+                # Compiled in only when the run is queued with apply=true, so the
+                # default path cannot create a NAT gateway or TGW attachment.
+                - ${{ if eq(parameters.apply, true) }}:
+                  - bash: |
+                      set -euo pipefail
+                      echo "apply=true - applying the hub"
+                      cd Training1/Perimeter
+                      terraform apply -input=false -lock-timeout=5m -auto-approve perimeter.tfplan
+                      terraform output
+                    displayName: 'terraform apply (Perimeter)'
+                    env:
+                      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                      AWS_REGION: $(AWS_REGION)
+                      AWS_DEFAULT_REGION: $(AWS_REGION)
+                - bash: echo "apply=${{ parameters.apply }} - plan-only unless the 'apply' parameter is true"
+                  displayName: 'cost guard: were resources created?'
 
   # --------------------------------------------------------------- 3. DEVOPS
   - stage: DevOps
@@ -139,11 +168,25 @@ stages:
                     # via data.terraform_remote_state.perimeter.
                     terraform init -input=false -lock-timeout=5m
                     terraform plan -input=false -lock-timeout=5m -out=devops.tfplan
-                    terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan
                     terraform output
-                  displayName: 'terraform init / plan / apply (DevOps)'
+                  displayName: 'terraform init / plan (DevOps)'
                   env:
                     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
                     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
                     AWS_REGION: $(AWS_REGION)
                     AWS_DEFAULT_REGION: $(AWS_REGION)
+                - ${{ if eq(parameters.apply, true) }}:
+                  - bash: |
+                      set -euo pipefail
+                      echo "apply=true - applying the spoke"
+                      cd Training1/DevOps
+                      terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan
+                      terraform output
+                    displayName: 'terraform apply (DevOps)'
+                    env:
+                      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                      AWS_REGION: $(AWS_REGION)
+                      AWS_DEFAULT_REGION: $(AWS_REGION)
+                - bash: echo "apply=${{ parameters.apply }} - plan-only unless the 'apply' parameter is true"
+                  displayName: 'cost guard: were resources created?'

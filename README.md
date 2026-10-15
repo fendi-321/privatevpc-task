@@ -711,6 +711,11 @@ to exist in S3. Every pipeline in this repo applies them in that order.
 
 **Total Estimated Cost:** ~$120-150/month
 
+**Current status (2026-10-16): nothing is deployed — the running cost is $0.**
+Both stacks were destroyed and the state objects are empty, so the figures above
+are what this architecture costs *while it is up*, not what is being billed now.
+Teardown order is always `Training1/DevOps` first, then `Training1/Perimeter`:
+
 **Cost Optimization Tips:**
 - Stop EC2 instance when not in use
 - Use smaller instance types
@@ -914,19 +919,26 @@ the same CLI version (`1.15.8`, installed by `scripts/install-terraform.sh`).
 | Platform | Definition | Trigger | State |
 |---|---|---|---|
 | GitLab CI | `Training1/.gitlab-ci.yml` | push to the mirrored GitLab project | Definition ready. Needs `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` CI variables; expects the project root to be `Training1/`. |
-| Azure Pipelines | `azure-pipelines.yml` (root) | push/PR to `master` touching `Training1/**`, `scripts/**`, `azure-pipelines.yml` | Pipeline **`privatevpc-task-tf`** (id 4), credentials in group `aws-terraform`, YAML compiles (all three stages are created on queue). **Not executed yet:** the organisation has 0 hosted parallel jobs — see below. Apply stages will pause on the `aws-prod` environment. |
+| Azure Pipelines | `azure-pipelines.yml` (root) | push/PR to `master` touching `Training1/**`, `scripts/**`, `azure-pipelines.yml` | Pipeline **`privatevpc-task-tf`** (id 4), credentials in group `aws-terraform`, YAML compiles (all three stages are created on queue). **Not executed yet:** the organisation has 0 hosted parallel jobs — see below. Apply is opt-in (`apply` parameter, default `false`), so a normal run only plans; apply stages will also pause on the `aws-prod` environment. |
 | AWS CodeBuild | `buildspec.yml` (root) | push to `master` in CodeCommit (EventBridge) | Project **`privatevpc-task-tf`**, plan-only by default, hub-then-spoke apply. **Deployed for real:** 28 Perimeter + 23 DevOps resources applied from CI; the follow-up plan reports `No changes` for both stacks. |
 
-**Live state (verified 2026-10-15).** Both stacks have since been applied from CI.
-CodeBuild ran with `TF_APPLY=true` and created 28 Perimeter + 23 DevOps resources
-(Transit Gateway, NAT Gateway + Elastic IP, Internet Gateway, four
-subnet/route-table/NACL sets in the hub, both Transit Gateway attachments, and in
-the spoke the VPC, subnet, SSM interface endpoint, IAM role/profile and the
-private `devops-instance`). The following plan-only build reported
-`No changes. Your infrastructure matches the configuration.` for **both** stacks,
-so the code and the deployed network now agree and every later build is a no-op
-until something changes. Tear-down order is `Training1/DevOps` first, then
-`Training1/Perimeter`.
+**Deployed for real, then torn down (verified 2026-10-15/16).** CodeBuild ran
+with `TF_APPLY=true` and created 28 Perimeter + 23 DevOps resources (Transit
+Gateway, NAT Gateway + Elastic IP, Internet Gateway, four subnet/route-table/NACL
+sets in the hub, both Transit Gateway attachments, and in the spoke the VPC,
+subnet, SSM interface endpoint, IAM role/profile and the private
+`devops-instance`). The following plan-only build, and the build triggered by the
+next real push to CodeCommit, both reported `No changes. Your infrastructure
+matches the configuration.` for both stacks — so the code and the deployed
+network agreed, confirmed twice by CI rather than by hand.
+
+The stacks were then **destroyed** in order (`Training1/DevOps` first, then
+`Training1/Perimeter`; 20 + 28 resources). Both state objects now hold
+`"resources": []` with no outputs, and `ap-southeast-1` has no EC2 instance, NAT
+Gateway, Elastic IP, Transit Gateway, VPC, endpoint, EBS volume or snapshot left
+— only the `terminated`/`deleted` tombstones. Running cost is therefore **$0**.
+Re-create it with the same two applies in the same order (see
+"Local Deployment").
 
 ### **Azure Pipelines setup**
 
@@ -966,6 +978,31 @@ Approvals and checks -> +**. The environment is created automatically the first
 time a `deployment` job runs, and approval checks have no CLI command, so this is
 the only step that cannot be scripted. Until it exists the `deployment` jobs run
 straight through; adding it makes both apply stages wait for a human.
+
+**Cost safety, and the only order that matters when you unblock this.** The
+`deployment` jobs used to run `terraform apply -auto-approve` unconditionally, so
+the moment the organisation had a parallel job *and* the `aws-prod` environment
+existed without an approval check, a push would have rebuilt the perimeter
+network (~$150/month). Apply is now opt-in through the `apply` parameter
+(boolean, default `false`), mirroring `TF_APPLY` in `buildspec.yml`: every run
+plans and prints
+`apply=False - plan-only unless the 'apply' parameter is true`, and the apply
+steps are not even compiled into the pipeline unless it is queued with
+`apply=true`. So:
+
+1. Create **Pipelines -> Environments -> `aws-prod`** and add the **Approval**
+   check *first*.
+2. Then get the parallel job (grant/billing/self-hosted agent).
+3. Run the pipeline unchanged for a free `No changes` comparison against the
+   state CodeBuild left behind; queue with `apply=true` only when you want the
+   network up again.
+
+The same guard now exists on the AWS side: the EventBridge push rule
+`privatevpc-task-master-push` is **DISABLED** and the project variable
+`TF_APPLY=false`, so neither a push nor a triggered build can create anything.
+`aws events enable-rule --name privatevpc-task-master-push --region
+ap-southeast-1` restores auto-triggering (still plan-only), or use
+`aws codebuild start-build` for a one-off.
 
 To rotate the AWS secrets (values are never committed):
 
@@ -1092,11 +1129,12 @@ This architecture demonstrates a production-ready AWS infrastructure implementin
 - ✅ CI/CD automation on GitLab CI, Azure Pipelines and AWS CodeBuild
 - ✅ Remote S3 state with S3-native locking (no laptop-local state, no DynamoDB)
 - ✅ AWS best practices and security principles
+- ✅ Cost-guarded pipelines: apply is opt-in on every platform (`TF_APPLY` on CodeBuild, `apply` on Azure), and the whole stack has been proven to tear down to $0
 
 The modular design allows for easy expansion to additional VPCs and workloads while maintaining centralized control and monitoring through the Perimeter VPC hub.
 
 ---
 
 **Last Updated:** October 2026
-**Version:** 1.2
-**Status:** Production Ready (hub + spoke applied from CI on AWS CodeBuild; both stacks converge at `No changes`; Azure Pipelines queued but blocked until the organisation is granted a parallel job)
+**Version:** 1.3
+**Status:** Production Ready (hub + spoke were applied from CI on AWS CodeBuild and converged at `No changes` twice, then **destroyed on 2026-10-16** — state verified empty and `ap-southeast-1` verified free of billable resources, so the running cost is $0). Azure Pipelines is wired and compiles but has not executed: the organisation has 0 hosted parallel jobs, and apply is now opt-in so an unblock cannot start charging by accident. Auto-triggering of CodeBuild builds is disabled until it is wanted again.
