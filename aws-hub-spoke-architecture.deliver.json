@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\USER\\Desktop\\cloud\\privatevpc-task\\aws-hub-spoke-architecture.json",
+  "output": "C:\\Users\\USER\\Desktop\\cloud\\privatevpc-task\\aws-hub-spoke-architecture.html",
+  "specification": {
+    "sha256": "5a365f9dde7526c6f07e5b4c75dd181b91f4a3c558abaca0a4a581403a17ac4d",
+    "bytes": 9017
+  },
+  "artifact": {
+    "sha256": "0436f2560abc061b5689d79a3167ea892bf920fa5ac210c40dcf73b85185af73",
+    "bytes": 724109
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/fendi-321/privatevpc-task",
+    "revision": "0a599b6a3e686cdf81d256e4bfc40f9a9d963c0b",
+    "references": 17
+  }
+}

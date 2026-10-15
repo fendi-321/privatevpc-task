@@ -1,0 +1,354 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "privatevpc-task: hub-and-spoke VPC",
+    "locale": "en",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/fendi-321/privatevpc-task",
+      "revision": "0a599b6a3e686cdf81d256e4bfc40f9a9d963c0b"
+    },
+    "views": [
+      {
+        "id": "access-path",
+        "label": "Admin access path",
+        "focus": ["engineer", "ssm_service", "ssm_endpoint", "devops_vm"],
+        "note": "Session Manager reaches the private instance with no inbound ports."
+      },
+      {
+        "id": "egress-path",
+        "label": "Centralized egress",
+        "focus": ["devops_vm", "tgw", "nat_gateway", "igw", "internet"],
+        "note": "Spoke traffic leaves through the Transit Gateway and the Perimeter NAT."
+      },
+      {
+        "id": "delivery-path",
+        "label": "Delivery pipeline",
+        "focus": ["gitlab", "state", "tgw"],
+        "note": "GitLab CI applies Perimeter, then DevOps resolves tgw_id from that state."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "engineer",
+      "type": "external",
+      "label": "Engineer",
+      "sublabel": "Console + CLI",
+      "pos": [40, 110],
+      "size": [130, 64]
+    },
+    {
+      "id": "ssm_service",
+      "type": "cloud",
+      "label": "SSM Session Manager",
+      "sublabel": "managed control plane",
+      "tag": "temporary STS",
+      "pos": [250, 110],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/DevOps/compute.tf",
+          "line": 1,
+          "end_line": 30,
+          "label": "ec2_ssm_role"
+        },
+        {
+          "path": "Training1/DevOps/compute.tf",
+          "line": 22,
+          "end_line": 25,
+          "label": "AmazonSSMManagedInstanceCore"
+        }
+      ]
+    },
+    {
+      "id": "nat_gateway",
+      "type": "cloud",
+      "label": "NAT Gateway",
+      "sublabel": "egress subnet",
+      "tag": "EIP + SNAT",
+      "pos": [730, 110],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/Perimeter/gateways.tf",
+          "line": 10,
+          "end_line": 28,
+          "label": "eip + nat gateway"
+        },
+        {
+          "path": "Training1/Perimeter/routing.tf",
+          "line": 8,
+          "end_line": 12,
+          "label": "0.0.0.0/0 to NAT"
+        }
+      ]
+    },
+    {
+      "id": "igw",
+      "type": "cloud",
+      "label": "Internet Gateway",
+      "sublabel": "ingress subnet",
+      "tag": "public route",
+      "pos": [940, 110],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/Perimeter/gateways.tf",
+          "line": 1,
+          "end_line": 8,
+          "label": "perimeter-igw"
+        },
+        {
+          "path": "Training1/Perimeter/routing.tf",
+          "line": 2,
+          "end_line": 6,
+          "label": "0.0.0.0/0 to IGW"
+        }
+      ]
+    },
+    {
+      "id": "internet",
+      "type": "external",
+      "label": "Internet",
+      "sublabel": "APIs + packages",
+      "pos": [1150, 110],
+      "size": [130, 64]
+    },
+    {
+      "id": "ssm_endpoint",
+      "type": "security",
+      "label": "SSM Endpoint",
+      "sublabel": "private DNS :443",
+      "tag": "interface type",
+      "pos": [250, 370],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/DevOps/compute.tf",
+          "line": 55,
+          "end_line": 84,
+          "label": "aws_vpc_endpoint.ssm"
+        }
+      ]
+    },
+    {
+      "id": "devops_vm",
+      "type": "backend",
+      "label": "DevOps VM",
+      "sublabel": "t2.micro private",
+      "tag": "Amazon Linux 2",
+      "pos": [490, 370],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/DevOps/compute.tf",
+          "line": 43,
+          "end_line": 53,
+          "label": "aws_instance.devops_instance"
+        },
+        {
+          "path": "Training1/DevOps/network.tf",
+          "line": 7,
+          "end_line": 12,
+          "label": "devops subnet /27"
+        },
+        {
+          "path": "Training1/DevOps/routing.tf",
+          "line": 2,
+          "end_line": 6,
+          "label": "0.0.0.0/0 to TGW"
+        }
+      ]
+    },
+    {
+      "id": "tgw",
+      "type": "cloud",
+      "label": "Transit Gateway",
+      "sublabel": "main-tgw hub",
+      "tag": "two attachments",
+      "pos": [730, 370],
+      "size": [140, 80],
+      "sources": [
+        {
+          "path": "Training1/Perimeter/tgw.tf",
+          "line": 1,
+          "end_line": 18,
+          "label": "tgw + perimeter attachment"
+        },
+        {
+          "path": "Training1/DevOps/tgw.tf",
+          "line": 1,
+          "end_line": 10,
+          "label": "devops attachment"
+        }
+      ]
+    },
+    {
+      "id": "gitlab",
+      "type": "external",
+      "label": "GitLab CI",
+      "sublabel": "shared runner",
+      "tag": "terraform image",
+      "pos": [40, 560],
+      "size": [150, 64],
+      "sources": [
+        {
+          "path": "Training1/.gitlab-ci.yml",
+          "line": 1,
+          "end_line": 7,
+          "label": "ordered stages"
+        },
+        {
+          "path": "Training1/.gitlab-ci.yml",
+          "line": 31,
+          "end_line": 53,
+          "label": "perimeter plan + apply"
+        },
+        {
+          "path": "Training1/.gitlab-ci.yml",
+          "line": 73,
+          "end_line": 81,
+          "label": "devops apply is manual"
+        }
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Terraform State",
+      "sublabel": "local tfstate",
+      "tag": "no S3 backend",
+      "pos": [730, 560],
+      "size": [140, 64],
+      "sources": [
+        {
+          "path": "Training1/DevOps/remote_state.tf",
+          "line": 4,
+          "end_line": 11,
+          "label": "remote_state.perimeter"
+        },
+        {
+          "path": "Training1/Perimeter/outputs.tf",
+          "line": 1,
+          "end_line": 9,
+          "label": "tgw_id + cidr outputs"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AWS ap-southeast-1 · stacks Training1/Perimeter + Training1/DevOps",
+      "wraps": ["ssm_service", "ssm_endpoint", "devops_vm", "tgw", "nat_gateway", "igw"],
+      "pad": 45
+    },
+    {
+      "kind": "security-group",
+      "label": "vpc-devops 100.126.100.0/24 · spoke",
+      "wraps": ["ssm_endpoint", "devops_vm"],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "vpc-perimeter 100.125.100.0/24 · hub",
+      "wraps": ["nat_gateway", "igw"],
+      "pad": 30
+    }
+  ],
+  "connections": [
+    {
+      "id": "engineer-session",
+      "from": "engineer",
+      "to": "ssm_service",
+      "label": "session",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent-channel",
+      "from": "ssm_service",
+      "to": "ssm_endpoint",
+      "label": "agent channel",
+      "variant": "security",
+      "labelAt": [320, 272]
+    },
+    {
+      "id": "endpoint-to-vm",
+      "from": "ssm_endpoint",
+      "to": "devops_vm",
+      "label": "TLS :443",
+      "variant": "security"
+    },
+    {
+      "id": "spoke-default-route",
+      "from": "devops_vm",
+      "to": "tgw",
+      "label": "0.0.0.0/0",
+      "variant": "emphasis"
+    },
+    {
+      "id": "hub-to-egress",
+      "from": "tgw",
+      "to": "nat_gateway",
+      "label": "egress route"
+    },
+    {
+      "id": "nat-to-igw",
+      "from": "nat_gateway",
+      "to": "igw",
+      "label": "SNAT"
+    },
+    {
+      "id": "igw-to-internet",
+      "from": "igw",
+      "to": "internet",
+      "label": "HTTPS"
+    },
+    {
+      "id": "pipeline-writes-state",
+      "from": "gitlab",
+      "to": "state",
+      "label": "terraform apply"
+    },
+    {
+      "id": "state-resolves-tgw",
+      "from": "state",
+      "to": "tgw",
+      "label": "resolves tgw_id",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Private access path",
+      "items": [
+        "No public IP, no inbound ports",
+        "Session Manager via SSM endpoint",
+        "Instance profile, not access keys"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Hub ownership and egress",
+      "items": [
+        "Perimeter owns TGW, NAT, IGW, EIP",
+        "Spoke 0.0.0.0/0 points at the TGW",
+        "DevOps resolves tgw_id from state"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Gaps found in the current code",
+      "items": [
+        "No aws_ec2_transit_gateway_route",
+        "Hub route table misses spoke CIDR",
+        "NACLs allow all; inspection empty"
+      ]
+    }
+  ]
+}
