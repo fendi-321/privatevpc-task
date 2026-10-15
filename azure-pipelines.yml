@@ -16,6 +16,10 @@
 #      apply jobs wait for a human before touching AWS.
 #   3. That identity needs access to the state bucket
 #      `privatevpc-task-tfstate-114030601209` (see README "Remote State Backend").
+#   4. The organisation needs at least one parallel job. Without one the run dies
+#      in ~7 seconds with "No hosted parallelism has been purchased or granted"
+#      and not a single step executes. Request the free grant, add billing, or
+#      set the `agentPool` parameter below to a self-hosted Linux pool.
 # ---------------------------------------------------------------------------
 
 trigger:
@@ -35,6 +39,15 @@ pr:
       - master
       - main
 
+parameters:
+  # Left empty (the default) the pipeline runs on Microsoft-hosted ubuntu-latest.
+  # Set it to a self-hosted *Linux* agent pool name to run without hosted
+  # parallelism (a Windows agent has no bash for the steps below).
+  - name: agentPool
+    displayName: 'Self-hosted agent pool (blank = Microsoft-hosted ubuntu-latest)'
+    type: string
+    default: ''
+
 variables:
   - group: aws-terraform
   - name: TF_VERSION
@@ -45,7 +58,10 @@ variables:
     value: 'false'
 
 pool:
-  vmImage: ubuntu-latest
+  ${{ if eq(parameters.agentPool, '') }}:
+    vmImage: ubuntu-latest
+  ${{ else }}:
+    name: ${{ parameters.agentPool }}
 
 stages:
   # ------------------------------------------------------------- 1. VALIDATE

@@ -67,10 +67,19 @@
       "Resource": "arn:aws:codecommit:ap-southeast-1:114030601209:privatevpc-task"
     },
     {
-      "Sid": "ReadExistingInfrastructureForPlanRefresh",
+      "Sid": "ReadExistingInfrastructureForPlanAndRefresh",
       "Effect": "Allow",
       "Action": [
-        "ec2:Describe*"
+        "ec2:Describe*",
+        "ec2:GetSecurityGroupsForVpc",
+        "ec2:GetTransitGatewayAttachmentPropagations",
+        "ec2:GetTransitGatewayPolicyTableAssociations",
+        "ec2:GetTransitGatewayPolicyTableEntries",
+        "ec2:GetTransitGatewayPrefixListReferences",
+        "ec2:GetTransitGatewayRouteTableAssociations",
+        "ec2:GetTransitGatewayRouteTablePropagations",
+        "ec2:GetVpcEndpointAssociations",
+        "ec2:SearchTransitGatewayRoutes"
       ],
       "Resource": "*"
     },

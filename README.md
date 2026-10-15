@@ -914,43 +914,77 @@ the same CLI version (`1.15.8`, installed by `scripts/install-terraform.sh`).
 | Platform | Definition | Trigger | State |
 |---|---|---|---|
 | GitLab CI | `Training1/.gitlab-ci.yml` | push to the mirrored GitLab project | Definition ready. Needs `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` CI variables; expects the project root to be `Training1/`. |
-| Azure Pipelines | `azure-pipelines.yml` (root) | push/PR to `master` touching `Training1/**`, `scripts/**`, `azure-pipelines.yml` | Pipeline **`privatevpc-task-tf`** registered in project `Mydevops` (id 4). Apply stages pause on the `aws-prod` environment. |
-| AWS CodeBuild | `buildspec.yml` (root) | push to `master` in CodeCommit (EventBridge) | Project **`privatevpc-task-tf`**, plan-only by default, hub-then-spoke apply. Last build: **all phases SUCCEEDED**. |
+| Azure Pipelines | `azure-pipelines.yml` (root) | push/PR to `master` touching `Training1/**`, `scripts/**`, `azure-pipelines.yml` | Pipeline **`privatevpc-task-tf`** (id 4), credentials in group `aws-terraform`, YAML compiles (all three stages are created on queue). **Not executed yet:** the organisation has 0 hosted parallel jobs — see below. Apply stages will pause on the `aws-prod` environment. |
+| AWS CodeBuild | `buildspec.yml` (root) | push to `master` in CodeCommit (EventBridge) | Project **`privatevpc-task-tf`**, plan-only by default, hub-then-spoke apply. **Deployed for real:** 28 Perimeter + 23 DevOps resources applied from CI; the follow-up plan reports `No changes` for both stacks. |
+
+**Live state (verified 2026-10-15).** Both stacks have since been applied from CI.
+CodeBuild ran with `TF_APPLY=true` and created 28 Perimeter + 23 DevOps resources
+(Transit Gateway, NAT Gateway + Elastic IP, Internet Gateway, four
+subnet/route-table/NACL sets in the hub, both Transit Gateway attachments, and in
+the spoke the VPC, subnet, SSM interface endpoint, IAM role/profile and the
+private `devops-instance`). The following plan-only build reported
+`No changes. Your infrastructure matches the configuration.` for **both** stacks,
+so the code and the deployed network now agree and every later build is a no-op
+until something changes. Tear-down order is `Training1/DevOps` first, then
+`Training1/Perimeter`.
 
 ### **Azure Pipelines setup**
 
 Already provisioned:
 
-- **Variable group `aws-terraform`** (id 1), authorised for all pipelines, with
-  the non-secret `AWS_REGION=ap-southeast-1`.
+- **Variable group `aws-terraform`** (id 1), authorised for all pipelines: the
+  non-secret `AWS_REGION=ap-southeast-1` plus `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY` as **secret** variables.
 - **Pipeline `privatevpc-task-tf`** (id 4) built from `azure-pipelines.yml`,
   first run skipped so nothing fires before credentials exist.
 
-Two steps remain, both one-offs:
+**One blocker: the organisation has no parallel jobs.** Run `20261015.1` failed
+7 seconds after it was queued, before a single step executed, with the job-level
+error
 
-1. Add the two secrets to the variable group (values are never committed):
+```
+No hosted parallelism has been purchased or granted.
+Please set up billing or purchase parallel jobs.
+```
 
-   ```bash
-   az pipelines variable-group variable create --group-id 1 \
-     --name AWS_ACCESS_KEY_ID --secret true --value '<access-key>' \
-     --org https://dev.azure.com/maffindi --project Mydevops
+The YAML itself is fine — Azure DevOps created all three stage records
+(`Validate`, `Perimeter VPC (hub)`, `DevOps VPC (spoke)`, including both
+`plan + apply` deployment phases) and then had no agent to place them on. Zero
+Microsoft-hosted parallel jobs is the default for a personal (MSA-backed)
+organisation, so nothing executed and nothing was charged. Three ways forward:
 
-   az pipelines variable-group variable create --group-id 1 \
-     --name AWS_SECRET_ACCESS_KEY --secret true --value '<secret-key>' \
-     --org https://dev.azure.com/maffindi --project Mydevops
-   ```
+1. **Request the free grant** — <https://aka.ms/azpipelines-parallelism-request>
+   (one parallel job, 1800 minutes/month on private projects), then re-run
+   pipeline 4. This is the path the checked-in YAML is written for.
+2. Add billing to the organisation and buy a parallel job.
+3. Register a **self-hosted Linux** agent, then queue the pipeline with the
+   `agentPool` parameter set to that pool's name (blank = Microsoft-hosted
+   `ubuntu-latest`).
 
-   Prefer short-lived/OIDC credentials over long-lived keys where available.
+Still a manual click after that: **Pipelines -> Environments -> `aws-prod` ->
+Approvals and checks -> +**. The environment is created automatically the first
+time a `deployment` job runs, and approval checks have no CLI command, so this is
+the only step that cannot be scripted. Until it exists the `deployment` jobs run
+straight through; adding it makes both apply stages wait for a human.
 
-2. **Pipelines -> Environments -> `aws-prod` -> Approvals and checks -> +**. The
-   environment is created automatically the first time the pipeline runs, and
-   approval checks have no CLI command, so this click is the only manual step
-   that cannot be scripted. Until it exists the `deployment` jobs run straight
-   through; adding it makes both apply stages wait for a human.
+To rotate the AWS secrets (values are never committed):
+
+```bash
+az pipelines variable-group variable create --group-id 1 \
+  --name AWS_ACCESS_KEY_ID --secret true --value '<access-key>' \
+  --org https://dev.azure.com/maffindi --project Mydevops
+
+az pipelines variable-group variable create --group-id 1 \
+  --name AWS_SECRET_ACCESS_KEY --secret true --value '<secret-key>' \
+  --org https://dev.azure.com/maffindi --project Mydevops
+```
+
+Long-lived keys are a stopgap — prefer short-lived/OIDC (federated) credentials
+where available.
 
 The pipeline identity needs the rights to create the VPC/TGW resources and to
-read/write the state bucket (`ci/codebuild-service-policy.json` is a good
-starting point for that policy).
+read/write the state bucket. `ci/codebuild-service-policy.json` is that policy —
+it is what actually deployed both stacks.
 
 ### **AWS CodeBuild setup**
 
@@ -997,8 +1031,9 @@ Notes:
 
 #### **Bugs the first real CI runs caught**
 
-Both were invisible locally because neither a Windows shell nor a direct
-`terraform validate` reproduces them:
+All three were invisible locally: a Windows shell, `terraform fmt -check` and a
+direct `terraform validate` each reproduce none of them, and the third only
+appears when a build actually **applies**:
 
 1. `scripts/install-terraform.sh` set the target directory to a writable
    `/usr/local/bin` but never copied the binary there (CodeBuild runs as root and
@@ -1013,6 +1048,33 @@ Both were invisible locally because neither a Windows shell nor a direct
    directory**, producing `Error: Failed to read module directory` (the modules
    themselves were fine; `init` had listed them all). Multi-line commands are now
    block scalars, or single lines.
+3. The CI role could **plan** but not **apply**. Its read statement granted only
+   `ec2:Describe*`, and a plan never exercises the provider's post-create read
+   path. The first real apply died while creating both Transit Gateway
+   attachments:
+
+   ```
+   Error: creating EC2 Transit Gateway VPC Attachment: reading EC2 Transit
+   Gateway Route Table Association (tgw-rtb-..._tgw-attach-...):
+   403 UnauthorizedOperation: ... not authorized to perform:
+   ec2:GetTransitGatewayRouteTableAssociations
+   ```
+
+   The attachment itself existed (the create call had succeeded) but Terraform
+   never learned its route-table association, so the build left inconsistent
+   resources behind that a later `plan` could not even refresh. The statement is
+   now named `ReadExistingInfrastructureForPlanAndRefresh` and adds the
+   `Get*`/`Search*` actions the provider uses —
+   `GetTransitGatewayRouteTableAssociations`,
+   `GetTransitGatewayRouteTablePropagations`,
+   `GetTransitGatewayAttachmentPropagations`,
+   `GetTransitGatewayPolicyTableAssociations`,
+   `GetTransitGatewayPolicyTableEntries`,
+   `GetTransitGatewayPrefixListReferences`, `GetVpcEndpointAssociations`,
+   `GetSecurityGroupsForVpc`, `SearchTransitGatewayRoutes` — deliberately **not**
+   a blanket `ec2:Get*`, which would also hand over `GetPasswordData` and
+   `GetConsoleScreenshot`. The very next apply replaced the two inconsistent
+   attachments (`1 added, 0 changed, 1 destroyed` per stack) and completed.
 
 Stacks must be applied in order — the hub (Perimeter) creates the Transit
 Gateway, then the spoke (DevOps) attaches to it. Every pipeline follows that
@@ -1036,5 +1098,5 @@ The modular design allows for easy expansion to additional VPCs and workloads wh
 ---
 
 **Last Updated:** October 2026
-**Version:** 1.1
-**Status:** Production Ready (pipelines verified plan-only; infrastructure not yet applied)
+**Version:** 1.2
+**Status:** Production Ready (hub + spoke applied from CI on AWS CodeBuild; both stacks converge at `No changes`; Azure Pipelines queued but blocked until the organisation is granted a parallel job)
