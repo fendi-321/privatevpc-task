@@ -1,3 +1,20 @@
+# ---------------------------------------------------------------------------
+# GitLab CI/CD for the Terraform hub-and-spoke network (Perimeter -> DevOps).
+#
+# NOTE: the jobs below use `cd Perimeter` / `cd DevOps`, i.e. they expect the
+# GitLab *project root* to be this Training1 directory. If the GitLab project
+# root is the repository root instead, move this file up one level and prefix
+# every stack path with Training1/.
+#
+# Prerequisites (Settings -> CI/CD -> Variables, Protected + Masked):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#
+# State is kept in the S3 backend declared in Perimeter/backend.tf and
+# DevOps/backend.tf, so a fresh runner no longer depends on a state file left
+# behind on some machine, and state locking prevents two pipelines from
+# writing at the same time.
+# ---------------------------------------------------------------------------
+
 stages:
   - perimeter-validate
   - perimeter-plan
@@ -8,22 +25,28 @@ stages:
 
 default:
   image:
-    name: hashicorp/terraform:latest
+    # Pinned (previously hashicorp/terraform:latest) to match the required_version
+    # in Perimeter/providers.tf and DevOps/providers.tf.
+    name: hashicorp/terraform:1.15.8
     entrypoint:
       - '/usr/bin/env'
       - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+variables:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
 
 before_script:
   - export AWS_ACCESS_KEY_ID
   - export AWS_SECRET_ACCESS_KEY
   - export AWS_REGION="ap-southeast-1"
-  - rm -rf .terraform
   - terraform --version
 
-# PERIMETER JOBS
+# ---------------------------------------------------------------- PERIMETER
 perimeter-network-validate:
   stage: perimeter-validate
   script:
+    - terraform fmt -check -recursive .
     - cd Perimeter
     - terraform init -backend=false
     - terraform validate
@@ -32,8 +55,8 @@ perimeter-network-plan:
   stage: perimeter-plan
   script:
     - cd Perimeter
-    - terraform init
-    - terraform plan -out=plan.tfplan
+    - terraform init -lock-timeout=5m
+    - terraform plan -lock-timeout=5m -out=plan.tfplan
   artifacts:
     paths:
       - Perimeter/plan.tfplan
@@ -42,8 +65,8 @@ perimeter-network-apply:
   stage: perimeter-apply
   script:
     - cd Perimeter
-    - terraform init
-    - terraform apply -auto-approve plan.tfplan
+    - terraform init -lock-timeout=5m
+    - terraform apply -lock-timeout=5m -auto-approve plan.tfplan
     - echo "TF_VAR_tgw_id=$(terraform output -raw tgw_id)" >> perimeter.env
     - echo "TF_VAR_perimeter_vpc_cidr=$(terraform output -raw perimeter_vpc_cidr)" >> perimeter.env
   artifacts:
@@ -52,7 +75,7 @@ perimeter-network-apply:
   dependencies:
     - perimeter-network-plan
 
-# DEVOPS JOBS
+# ------------------------------------------------------------------- DEVOPS
 devops-network-validate:
   stage: devops-validate
   script:
@@ -64,8 +87,8 @@ devops-network-plan:
   stage: devops-plan
   script:
     - cd DevOps
-    - terraform init
-    - terraform plan -out=plan.tfplan
+    - terraform init -lock-timeout=5m
+    - terraform plan -lock-timeout=5m -out=plan.tfplan
   artifacts:
     paths:
       - DevOps/plan.tfplan
@@ -74,8 +97,9 @@ devops-network-apply:
   stage: devops-apply
   script:
     - cd DevOps
-    - terraform init
-    - terraform apply -auto-approve plan.tfplan
+    - terraform init -lock-timeout=5m
+    - terraform apply -lock-timeout=5m -auto-approve plan.tfplan
   dependencies:
     - devops-network-plan
   when: manual
+

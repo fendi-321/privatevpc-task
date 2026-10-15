@@ -669,8 +669,9 @@ aws ec2 describe-network-acls --filters "Name=vpc-id,Values=<vpc-id>"
 
 **Resolution:**
 ```bash
-# Check state lock
-aws dynamodb get-item --table-name terraform-locks
+# Inspect the state object and its lockfile (S3-native locking)
+aws s3 ls s3://privatevpc-task-tfstate-114030601209/perimeter/
+aws s3 cp s3://privatevpc-task-tfstate-114030601209/perimeter/terraform.tfstate.tflock -
 
 # Force unlock (use with caution)
 terraform force-unlock <lock-id>
@@ -680,13 +681,16 @@ terraform force-unlock <lock-id>
 **Symptoms:** DevOps plan cannot read Perimeter outputs
 **Resolution:**
 ```bash
-# Verify state file exists
-ls ../Perimeter/terraform.tfstate.backup
+# Verify the Perimeter state object and its outputs (S3 backend)
+aws s3 ls s3://privatevpc-task-tfstate-114030601209/perimeter/
 
-# Check outputs in Perimeter
-cd ../Perimeter
-terraform output
+cd Perimeter
+terraform output   # tgw_id, perimeter_vpc_cidr, perimeter_vpc_id, nat_gateway_public_ip
 ```
+
+The DevOps stack can only be planned **after** the Perimeter stack has been
+applied, because `data.terraform_remote_state.perimeter` needs the hub's outputs
+to exist in S3. Every pipeline in this repo applies them in that order.
 
 ---
 
@@ -810,6 +814,130 @@ terraform output
 - Check AWS CloudWatch logs
 - Review Terraform state files
 - Consult AWS support if needed
+
+---
+
+## **Repository Mirrors**
+
+The same history is published to three git hosts so the CI/CD story can be
+demonstrated on each platform.
+
+| Remote | Target | Pipeline definition |
+|---|---|---|
+| `origin` | GitHub - https://github.com/fendi-321/privatevpc-task | none (GitHub Actions can be added later) |
+| `azure` | Azure Repos - https://dev.azure.com/maffindi/Mydevops/_git/privatevpc-task | `azure-pipelines.yml` (repo root) |
+| `aws` | AWS CodeCommit - `privatevpc-task` in `ap-southeast-1` | `buildspec.yml` (repo root) |
+
+```bash
+# keep all three in sync
+git push origin master
+git push azure master
+git push aws master
+```
+
+**AWS CodeCommit notes:**
+- CodeCommit has **no endpoint in `ap-southeast-5` (Malaysia)**, so the mirror
+  lives in `ap-southeast-1`:
+  `https://git-codecommit.ap-southeast-1.amazonaws.com/v1/repos/privatevpc-task`
+- Authentication uses the credential helper, scoped to that host so it does not
+  clash with Git Credential Manager:
+  ```bash
+  git config --global credential."https://git-codecommit.ap-southeast-1.amazonaws.com".helper ""
+  git config --global credential."https://git-codecommit.ap-southeast-1.amazonaws.com".helper "!aws codecommit credential-helper \$@"
+  git config --global credential."https://git-codecommit.ap-southeast-1.amazonaws.com".UseHttpPath true
+  ```
+
+---
+
+## **Remote State Backend (S3, native locking)**
+
+Both stacks now use a remote S3 backend (`Training1/Perimeter/backend.tf`,
+`Training1/DevOps/backend.tf`) instead of local state:
+
+| Setting | Value |
+|---|---|
+| State bucket | `privatevpc-task-tfstate-114030601209` (versioned, AES256, public access blocked) |
+| Perimeter state key | `perimeter/terraform.tfstate` |
+| DevOps state key | `devops/terraform.tfstate` |
+| Locking | S3-native lockfile (`use_lockfile = true` -> `<key>.tflock` object) |
+| Region | `ap-southeast-1` |
+
+**Why:** the DevOps stack reads the Transit Gateway ID from the Perimeter stack
+via `data.terraform_remote_state.perimeter`. That data source previously used
+`backend = "local"` pointing at `../Perimeter/terraform.tfstate.backup`, a file
+that only existed on the machine that ran the Perimeter apply — so **any hosted
+CI runner failed** (and `*.tfstate*` is git-ignored, so the file was never in
+the repo). With the S3 backend the outputs are read from the state object, which
+works on every runner, and state locking stops two pipelines writing at once.
+
+Creating the backend resources (already done in account `114030601209`):
+
+```bash
+aws s3api create-bucket --bucket privatevpc-task-tfstate-114030601209 \
+  --region ap-southeast-1 --create-bucket-configuration LocationConstraint=ap-southeast-1
+aws s3api put-bucket-versioning --bucket privatevpc-task-tfstate-114030601209 \
+  --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket privatevpc-task-tfstate-114030601209 \
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+Locking is handled by S3 itself (`use_lockfile = true`), so **no DynamoDB table
+is required** and `terraform init` stays warning-free on Terraform >= 1.10 (the
+`dynamodb_table` backend argument is deprecated there). Only if you must run an
+older CLI, add `dynamodb_table = "privatevpc-task-tfstate-locks"` to the backend
+block and create the classic lock table:
+
+```bash
+aws dynamodb create-table --table-name privatevpc-task-tfstate-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST --region ap-southeast-1
+```
+
+Any value can be overridden per environment without editing the `.tf` files:
+
+```bash
+terraform init -backend-config="bucket=my-other-state-bucket"
+```
+
+Provider versions are pinned by the committed `.terraform.lock.hcl` files
+(currently `hashicorp/aws 5.100.0`), and both stacks declare
+`required_version = ">= 1.10.0"`.
+
+---
+
+## **CI/CD Pipelines (GitLab / Azure Pipelines / AWS CodeBuild)**
+
+All three pipeline definitions are thin wrappers around the same two stacks and
+the same CLI version (`1.15.8`, installed by `scripts/install-terraform.sh`).
+
+| Platform | File | Notes |
+|---|---|---|
+| GitLab CI | `Training1/.gitlab-ci.yml` | Expects the GitLab project root to be `Training1/`. Requires `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` CI variables. |
+| Azure Pipelines | `azure-pipelines.yml` (root) | Validate -> Perimeter (approval) -> DevOps (approval). |
+| AWS CodeBuild | `buildspec.yml` (root) | Plan-only unless `TF_APPLY=true`; uses the CodeBuild IAM service role, no static keys. |
+
+### **Azure Pipelines setup**
+1. **Library -> Variable group** `aws-terraform` with `AWS_ACCESS_KEY_ID` and
+   `AWS_SECRET_ACCESS_KEY` (secret) plus `AWS_REGION=ap-southeast-1`.
+2. **Environments -> `aws-prod`** with an **Approval** check, so the
+   `deployment` jobs pause before applying.
+3. Create the pipeline from `azure-pipelines.yml` (or let the first push
+   register it) — the service principal/identity needs the rights to create the
+   VPC/TGW resources and to read/write the state bucket.
+
+### **AWS CodeBuild setup**
+1. Build project with source **CodeCommit** `privatevpc-task` (branch `master`)
+   and *Buildspec: use a buildspec file* (`buildspec.yml`).
+2. Service role permissions: the resources in `Training1`, plus
+   `s3:ListBucket|GetObject|PutObject|DeleteObject` on the state bucket (the
+   `.tflock` lockfile lives in the same bucket).
+3. Set `TF_APPLY=true` on the project (or trigger a manual build with it) to
+   apply; by default builds only validate and plan.
+
+Stacks must be applied in order — the hub (Perimeter) creates the Transit
+Gateway, then the spoke (DevOps) attaches to it. Every pipeline follows that
+order.
 
 ---
 

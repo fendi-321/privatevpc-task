@@ -1,0 +1,133 @@
+# ---------------------------------------------------------------------------
+# Azure Pipelines CI/CD for the Terraform hub-and-spoke network (Training1)
+# ---------------------------------------------------------------------------
+# Mirrors the GitLab pipeline logic, but on an Azure-hosted agent:
+#   1. Validate  - fmt + validate both stacks (no AWS credentials needed)
+#   2. Perimeter - init, plan, apply the hub VPC   (approval gated)
+#   3. DevOps    - init, plan, apply the spoke VPC (approval gated, after hub)
+#
+# One-time setup in Azure DevOps:
+#   1. Pipelines -> Library -> Variable group `aws-terraform` containing:
+#        AWS_ACCESS_KEY_ID      (secret)
+#        AWS_SECRET_ACCESS_KEY  (secret)
+#        AWS_REGION             (plain, e.g. ap-southeast-1)
+#      Prefer short-lived credentials (OIDC/federated) over long-lived keys.
+#   2. Pipelines -> Environments -> `aws-prod`, add an Approval check so the
+#      apply jobs wait for a human before touching AWS.
+#   3. That identity needs access to the state bucket
+#      `privatevpc-task-tfstate-114030601209` (see README "Remote State Backend").
+# ---------------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - master
+      - main
+  paths:
+    include:
+      - Training1/**
+      - scripts/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+      - master
+      - main
+
+variables:
+  - group: aws-terraform
+  - name: TF_VERSION
+    value: '1.15.8'
+  - name: TF_IN_AUTOMATION
+    value: 'true'
+  - name: TF_INPUT
+    value: 'false'
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  # ------------------------------------------------------------- 1. VALIDATE
+  - stage: Validate
+    displayName: 'Validate'
+    jobs:
+      - job: TerraformValidate
+        displayName: 'fmt + validate'
+        steps:
+          - checkout: self
+          - bash: scripts/install-terraform.sh
+            displayName: 'Install Terraform $(TF_VERSION)'
+          - bash: terraform fmt -check -recursive Training1
+            displayName: 'terraform fmt -check'
+          - bash: |
+              set -euo pipefail
+              for stack in Training1/Perimeter Training1/DevOps; do
+                echo "##[section]Validating ${stack}"
+                ( cd "${stack}" \
+                  && terraform init -backend=false -input=false \
+                  && terraform validate )
+              done
+            displayName: 'terraform init -backend=false + validate'
+
+  # ------------------------------------------------------------ 2. PERIMETER
+  - stage: Perimeter
+    displayName: 'Perimeter VPC (hub)'
+    dependsOn: Validate
+    jobs:
+      - deployment: PerimeterApply
+        displayName: 'plan + apply perimeter'
+        # The presence of an environment is what makes the `aws-prod` approval
+        # check (if configured) gate this job.
+        environment: 'aws-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - bash: scripts/install-terraform.sh
+                  displayName: 'Install Terraform $(TF_VERSION)'
+                - bash: |
+                    set -euo pipefail
+                    cd Training1/Perimeter
+                    terraform init -input=false -lock-timeout=5m
+                    terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan
+                    terraform apply -input=false -lock-timeout=5m -auto-approve perimeter.tfplan
+                    terraform output
+                  displayName: 'terraform init / plan / apply (Perimeter)'
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                    AWS_REGION: $(AWS_REGION)
+                    AWS_DEFAULT_REGION: $(AWS_REGION)
+
+  # --------------------------------------------------------------- 3. DEVOPS
+  - stage: DevOps
+    displayName: 'DevOps VPC (spoke)'
+    dependsOn: Perimeter
+    jobs:
+      - deployment: DevOpsApply
+        displayName: 'plan + apply devops'
+        environment: 'aws-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - bash: scripts/install-terraform.sh
+                  displayName: 'Install Terraform $(TF_VERSION)'
+                - bash: |
+                    set -euo pipefail
+                    cd Training1/DevOps
+                    # Reads the Transit Gateway ID from the Perimeter S3 state
+                    # via data.terraform_remote_state.perimeter.
+                    terraform init -input=false -lock-timeout=5m
+                    terraform plan -input=false -lock-timeout=5m -out=devops.tfplan
+                    terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan
+                    terraform output
+                  displayName: 'terraform init / plan / apply (DevOps)'
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+                    AWS_REGION: $(AWS_REGION)
+                    AWS_DEFAULT_REGION: $(AWS_REGION)

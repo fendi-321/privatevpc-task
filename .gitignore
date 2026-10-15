@@ -4,9 +4,11 @@ node_modules/
 
 # Terraform
 **/.terraform/
-**/.terraform.lock.hcl
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored - committing it pins
+# the exact provider versions used locally and on every CI runner.
 *.tfstate
 *.tfstate.*
+*.tfplan
 crash.log
 crash.*.log
 *.tfvars

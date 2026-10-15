@@ -42,9 +42,9 @@ data "aws_ami" "amazon_linux_2" {
 
 # EC2 Instance in the devops subnet
 resource "aws_instance" "devops_instance" {
-  ami           = data.aws_ami.amazon_linux_2.id
-  instance_type = "t2.micro"
-  subnet_id     = module.devops_subnet.subnet_id
+  ami                  = data.aws_ami.amazon_linux_2.id
+  instance_type        = "t2.micro"
+  subnet_id            = module.devops_subnet.subnet_id
   iam_instance_profile = aws_iam_instance_profile.ec2_ssm_profile.name
 
   tags = {

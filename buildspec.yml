@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# AWS CodeBuild buildspec for the Terraform hub-and-spoke network (Training1)
+# ---------------------------------------------------------------------------
+# CodeBuild authenticates with its IAM *service role*, so no long-lived AWS
+# keys are needed here or in the build project's environment.
+#
+# One-time setup:
+#   1. CodeBuild project with source = CodeCommit repo `privatevpc-task`
+#      (branch `master`), "Buildspec: use a buildspec file" (this file),
+#      managed image, no privileged mode required.
+#   2. Service role permissions: the resources declared in Training1, plus
+#      s3:ListBucket/GetObject/PutObject/DeleteObject on
+#      `privatevpc-task-tfstate-114030601209` (state + `.tflock` lock object).
+#   3. Set TF_APPLY=true in the project environment variables to let builds
+#      apply. Left as the default (false) the build is plan-only.
+# ---------------------------------------------------------------------------
+version: 0.2
+
+env:
+  variables:
+    TF_VERSION: "1.15.8"
+    TF_IN_AUTOMATION: "true"
+    TF_INPUT: "false"
+    TF_APPLY: "false"
+
+phases:
+  install:
+    commands:
+      - bash scripts/install-terraform.sh
+  pre_build:
+    commands:
+      - terraform version
+      - terraform fmt -check -recursive Training1
+      - ( cd Training1/Perimeter && terraform init -input=false -lock-timeout=5m )
+      - ( cd Training1/DevOps && terraform init -input=false -lock-timeout=5m )
+  build:
+    commands:
+      - ( cd Training1/Perimeter && terraform validate \
+          && terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan )
+      - ( cd Training1/DevOps && terraform validate \
+          && terraform plan -input=false -lock-timeout=5m -out=devops.tfplan )
+      # Apply is opt-in: the hub must exist before the spoke can read its TGW id.
+      - |
+        if [ "${TF_APPLY}" = "true" ]; then
+          echo "TF_APPLY=true - applying both stacks"
+          ( cd Training1/Perimeter && terraform apply -input=false -lock-timeout=5m -auto-approve perimeter.tfplan )
+          ( cd Training1/DevOps && terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan )
+        else
+          echo "TF_APPLY=${TF_APPLY} - plan-only build, nothing applied"
+        fi
+
+artifacts:
+  name: terraform-plans
+  files:
+    - Training1/Perimeter/perimeter.tfplan
+    - Training1/DevOps/devops.tfplan

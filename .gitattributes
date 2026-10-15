@@ -1,0 +1,10 @@
+# Normalise line endings so the CI helper scripts stay executable on Linux
+# runners (Azure Pipelines, CodeBuild, GitLab) regardless of the OS that
+# committed them.
+*.sh text eol=lf
+*.tf text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary architecture artifacts must never be converted.
+*.png binary
