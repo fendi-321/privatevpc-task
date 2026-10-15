@@ -1,15 +1,12 @@
 # ---------------------------------------------------------------------------
 # AWS CodeBuild buildspec for the Terraform hub-and-spoke network (Training1)
 # ---------------------------------------------------------------------------
-# CodeBuild authenticates with its IAM *service role*, so no long-lived AWS
-# keys are needed here or in the build project's environment.
-#
 # One-time setup (see ci/ and README "CI/CD Pipelines"):
 #   1. CodeBuild project created from ci/codebuild-project.json - source =
 #      CodeCommit repo `privatevpc-task` (branch `master`), this buildspec, the
-#      `privatevpc-task-codebuild-role` service role (ci/*.json policies).
-#      Authenticates with that role, so no long-lived AWS keys are needed here
-#      or in the build project's environment.
+#      `privatevpc-task-codebuild-role` service role (ci/*.json policies), which
+#      is how it authenticates - so no long-lived AWS keys are needed here or in
+#      the build project's environment.
 #   2. Artifacts (the two .tfplan files) go to `privatevpc-task-artifacts-...`.
 #   3. Set TF_APPLY=true in the project's environment variables to let builds
 #      apply (hub first, then the spoke). Left unset/false the build is
