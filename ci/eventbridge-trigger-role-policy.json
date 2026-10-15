@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartTheTerraformBuildOnly",
+      "Effect": "Allow",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:ap-southeast-1:114030601209:project/privatevpc-task-tf"
+    }
+  ]
+}

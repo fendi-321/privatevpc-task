@@ -1,0 +1,10 @@
+{
+  "source": ["aws.codecommit"],
+  "detail-type": ["CodeCommit Repository State Change"],
+  "resources": ["arn:aws:codecommit:ap-southeast-1:114030601209:privatevpc-task"],
+  "detail": {
+    "event": ["referenceCreated", "referenceUpdated"],
+    "referenceType": ["branch"],
+    "referenceName": ["master"]
+  }
+}

@@ -35,12 +35,19 @@ phases:
     commands:
       - terraform version
       - terraform fmt -check -recursive Training1
+      - |
+        # Always produced, so the artifacts phase has at least one matching file
+        # even when a stack could not be planned (and therefore wrote no .tfplan).
+        {
+          echo "commit: ${CODEBUILD_RESOLVED_SOURCE_VERSION:-unknown}"
+          echo "build: ${CODEBUILD_BUILD_ID:-unknown}"
+          terraform version 2>/dev/null | head -n 2
+        } > ci-build-info.txt
       - ( cd Training1/Perimeter && terraform init -input=false -lock-timeout=5m )
       - ( cd Training1/DevOps && terraform init -input=false -lock-timeout=5m )
   build:
     commands:
-      - ( cd Training1/Perimeter && terraform validate \
-          && terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan )
+      - ( cd Training1/Perimeter && terraform validate && terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan )
       # The spoke reads the Transit Gateway id out of the hub's S3 state, so it
       # can only be planned once the hub has been applied. The state location is
       # derived from the hub backend config (single source of truth) and checked
@@ -78,5 +85,6 @@ phases:
 artifacts:
   name: terraform-plans
   files:
+    - ci-build-info.txt
     - Training1/Perimeter/perimeter.tfplan
     - Training1/DevOps/devops.tfplan
