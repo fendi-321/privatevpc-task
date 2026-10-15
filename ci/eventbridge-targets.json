@@ -1,0 +1,7 @@
+[
+  {
+    "Id": "terraform-build",
+    "Arn": "arn:aws:codebuild:ap-southeast-1:114030601209:project/privatevpc-task-tf",
+    "RoleArn": "arn:aws:iam::114030601209:role/privatevpc-task-codebuild-trigger-role"
+  }
+]

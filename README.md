@@ -911,29 +911,108 @@ Provider versions are pinned by the committed `.terraform.lock.hcl` files
 All three pipeline definitions are thin wrappers around the same two stacks and
 the same CLI version (`1.15.8`, installed by `scripts/install-terraform.sh`).
 
-| Platform | File | Notes |
-|---|---|---|
-| GitLab CI | `Training1/.gitlab-ci.yml` | Expects the GitLab project root to be `Training1/`. Requires `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` CI variables. |
-| Azure Pipelines | `azure-pipelines.yml` (root) | Validate -> Perimeter (approval) -> DevOps (approval). |
-| AWS CodeBuild | `buildspec.yml` (root) | Plan-only unless `TF_APPLY=true`; uses the CodeBuild IAM service role, no static keys. |
+| Platform | Definition | Trigger | State |
+|---|---|---|---|
+| GitLab CI | `Training1/.gitlab-ci.yml` | push to the mirrored GitLab project | Definition ready. Needs `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` CI variables; expects the project root to be `Training1/`. |
+| Azure Pipelines | `azure-pipelines.yml` (root) | push/PR to `master` touching `Training1/**`, `scripts/**`, `azure-pipelines.yml` | Pipeline **`privatevpc-task-tf`** registered in project `Mydevops` (id 4). Apply stages pause on the `aws-prod` environment. |
+| AWS CodeBuild | `buildspec.yml` (root) | push to `master` in CodeCommit (EventBridge) | Project **`privatevpc-task-tf`**, plan-only by default, hub-then-spoke apply. Last build: **all phases SUCCEEDED**. |
 
 ### **Azure Pipelines setup**
-1. **Library -> Variable group** `aws-terraform` with `AWS_ACCESS_KEY_ID` and
-   `AWS_SECRET_ACCESS_KEY` (secret) plus `AWS_REGION=ap-southeast-1`.
-2. **Environments -> `aws-prod`** with an **Approval** check, so the
-   `deployment` jobs pause before applying.
-3. Create the pipeline from `azure-pipelines.yml` (or let the first push
-   register it) — the service principal/identity needs the rights to create the
-   VPC/TGW resources and to read/write the state bucket.
+
+Already provisioned:
+
+- **Variable group `aws-terraform`** (id 1), authorised for all pipelines, with
+  the non-secret `AWS_REGION=ap-southeast-1`.
+- **Pipeline `privatevpc-task-tf`** (id 4) built from `azure-pipelines.yml`,
+  first run skipped so nothing fires before credentials exist.
+
+Two steps remain, both one-offs:
+
+1. Add the two secrets to the variable group (values are never committed):
+
+   ```bash
+   az pipelines variable-group variable create --group-id 1 \
+     --name AWS_ACCESS_KEY_ID --secret true --value '<access-key>' \
+     --org https://dev.azure.com/maffindi --project Mydevops
+
+   az pipelines variable-group variable create --group-id 1 \
+     --name AWS_SECRET_ACCESS_KEY --secret true --value '<secret-key>' \
+     --org https://dev.azure.com/maffindi --project Mydevops
+   ```
+
+   Prefer short-lived/OIDC credentials over long-lived keys where available.
+
+2. **Pipelines -> Environments -> `aws-prod` -> Approvals and checks -> +**. The
+   environment is created automatically the first time the pipeline runs, and
+   approval checks have no CLI command, so this click is the only manual step
+   that cannot be scripted. Until it exists the `deployment` jobs run straight
+   through; adding it makes both apply stages wait for a human.
+
+The pipeline identity needs the rights to create the VPC/TGW resources and to
+read/write the state bucket (`ci/codebuild-service-policy.json` is a good
+starting point for that policy).
 
 ### **AWS CodeBuild setup**
-1. Build project with source **CodeCommit** `privatevpc-task` (branch `master`)
-   and *Buildspec: use a buildspec file* (`buildspec.yml`).
-2. Service role permissions: the resources in `Training1`, plus
-   `s3:ListBucket|GetObject|PutObject|DeleteObject` on the state bucket (the
-   `.tflock` lockfile lives in the same bucket).
-3. Set `TF_APPLY=true` on the project (or trigger a manual build with it) to
-   apply; by default builds only validate and plan.
+
+Already provisioned, and all of it is reproducible from the checked-in `ci/`
+files:
+
+| Resource | Name | Created with |
+|---|---|---|
+| Build project | `privatevpc-task-tf` | `aws codebuild create-project --cli-input-json file://ci/codebuild-project.json` |
+| Service role | `privatevpc-task-codebuild-role` | `ci/codebuild-trust-policy.json` + `ci/codebuild-service-policy.json` |
+| Artifacts bucket | `privatevpc-task-artifacts-114030601209` (AES256, public access blocked) | `aws s3api create-bucket` + `put-bucket-encryption` + `put-public-access-block` |
+| Push trigger | EventBridge rule `privatevpc-task-master-push` -> `privatevpc-task-tf` | `ci/eventbridge-codecommit-push-rule.json`, `ci/eventbridge-targets.json`, `ci/eventbridge-trigger-role-*.json` |
+
+Notes:
+
+- The project source **must** use the full CodeCommit HTTPS URL
+  (`https://git-codecommit.ap-southeast-1.amazonaws.com/v1/repos/privatevpc-task`).
+  A bare repository name is accepted by `create-project` but then fails the
+  source download with `repository not found for primary source`.
+- CodeBuild authenticates as its **service role**, so no static AWS keys are
+  stored in the project (`ci/codebuild-service-policy.json` is scoped to the
+  state bucket, the artifacts bucket, this one repository and the resource types
+  declared in `Training1`).
+- `create-webhook` is refused for this source
+  (`Project source does not support webhook`), which is why the push-to-master
+  trigger is an EventBridge rule instead. `ci/codebuild-webhook.json` is kept as
+  the documented equivalent for platforms where webhooks are available.
+- Plan-only by default. Flip the toggle to actually deploy (hub first, spoke
+  second, in the same build):
+
+  ```bash
+  aws codebuild update-project --name privatevpc-task-tf --region ap-southeast-1 \
+    --environment 'type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL,privilegedMode=false,environmentVariables=[{name=TF_APPLY,value=true,type=PLAINTEXT},{name=TF_VERSION,value=1.15.8,type=PLAINTEXT},{name=AWS_REGION,value=ap-southeast-1,type=PLAINTEXT}]'
+
+  aws codebuild start-build --project-name privatevpc-task-tf --region ap-southeast-1
+  ```
+
+- Before the hub exists the spoke plan is skipped with an explicit message
+  (`Hub state object not found - skipping the DevOps (spoke) plan.`) instead of
+  failing the build, because the spoke reads the Transit Gateway id out of the
+  hub's state. The hub state location is read from
+  `Training1/Perimeter/backend.tf`, so there is no duplicated bucket/key
+  configuration to drift.
+
+#### **Bugs the first real CI runs caught**
+
+Both were invisible locally because neither a Windows shell nor a direct
+`terraform validate` reproduces them:
+
+1. `scripts/install-terraform.sh` set the target directory to a writable
+   `/usr/local/bin` but never copied the binary there (CodeBuild runs as root and
+   took exactly that branch), then still printed `Installed ... into
+   /usr/local/bin` and exited 0 — every later step died with
+   `terraform: command not found`. The binary is now installed and the script
+   fails loudly if it is not runnable.
+2. `buildspec.yml` used `\` line continuations inside a plain YAML scalar. YAML
+   folds that newline into a space, so the shell received
+   `terraform validate \<space>&& ...` — the escaped space became a literal `" "`
+   argument, and `terraform validate` reads a positional argument as a **module
+   directory**, producing `Error: Failed to read module directory` (the modules
+   themselves were fine; `init` had listed them all). Multi-line commands are now
+   block scalars, or single lines.
 
 Stacks must be applied in order — the hub (Perimeter) creates the Transit
 Gateway, then the spoke (DevOps) attaches to it. Every pipeline follows that
@@ -948,13 +1027,14 @@ This architecture demonstrates a production-ready AWS infrastructure implementin
 - ✅ Centralized internet egress
 - ✅ Hub-and-spoke network topology
 - ✅ Infrastructure as Code with Terraform
-- ✅ CI/CD automation with GitLab
+- ✅ CI/CD automation on GitLab CI, Azure Pipelines and AWS CodeBuild
+- ✅ Remote S3 state with S3-native locking (no laptop-local state, no DynamoDB)
 - ✅ AWS best practices and security principles
 
 The modular design allows for easy expansion to additional VPCs and workloads while maintaining centralized control and monitoring through the Perimeter VPC hub.
 
 ---
 
-**Last Updated:** November 2025
-**Version:** 1.0
-**Status:** Production Ready
+**Last Updated:** October 2026
+**Version:** 1.1
+**Status:** Production Ready (pipelines verified plan-only; infrastructure not yet applied)
