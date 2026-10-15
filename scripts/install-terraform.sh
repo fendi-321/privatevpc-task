@@ -57,22 +57,29 @@ fi
 chmod +x "${tmp_dir}/terraform"
 
 if [ -w /usr/local/bin ]; then
+  install -m 0755 "${tmp_dir}/terraform" /usr/local/bin/terraform
   install_dir="/usr/local/bin"
 elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
   sudo install -m 0755 "${tmp_dir}/terraform" /usr/local/bin/terraform
   install_dir="/usr/local/bin"
 else
   install_dir="${PWD}/.ci-bin"
-fi
-
-if [ "${install_dir}" != "/usr/local/bin" ]; then
   mkdir -p "${install_dir}"
-  mv "${tmp_dir}/terraform" "${install_dir}/terraform"
+  cp "${tmp_dir}/terraform" "${install_dir}/terraform"
+  chmod +x "${install_dir}/terraform"
   # Make the directory visible to the remaining steps of this job
   # (recognised by Azure Pipelines; harmless text elsewhere).
   echo "##vso[task.prependpath]${install_dir}"
   PATH="${install_dir}:${PATH}"
   export PATH
+fi
+
+# Fail loudly here rather than letting a later phase trip over
+# "terraform: command not found" (that is what a real CodeBuild run surfaced
+# when the binary was not copied into a writable /usr/local/bin).
+if ! command -v terraform >/dev/null 2>&1; then
+  echo "ERROR: terraform was not installed into ${install_dir}" >&2
+  exit 1
 fi
 
 echo "Installed $(terraform version | head -n 1) into ${install_dir}"

@@ -4,15 +4,16 @@
 # CodeBuild authenticates with its IAM *service role*, so no long-lived AWS
 # keys are needed here or in the build project's environment.
 #
-# One-time setup:
-#   1. CodeBuild project with source = CodeCommit repo `privatevpc-task`
-#      (branch `master`), "Buildspec: use a buildspec file" (this file),
-#      managed image, no privileged mode required.
-#   2. Service role permissions: the resources declared in Training1, plus
-#      s3:ListBucket/GetObject/PutObject/DeleteObject on
-#      `privatevpc-task-tfstate-114030601209` (state + `.tflock` lock object).
-#   3. Set TF_APPLY=true in the project environment variables to let builds
-#      apply. Left as the default (false) the build is plan-only.
+# One-time setup (see ci/ and README "CI/CD Pipelines"):
+#   1. CodeBuild project created from ci/codebuild-project.json - source =
+#      CodeCommit repo `privatevpc-task` (branch `master`), this buildspec, the
+#      `privatevpc-task-codebuild-role` service role (ci/*.json policies).
+#      Authenticates with that role, so no long-lived AWS keys are needed here
+#      or in the build project's environment.
+#   2. Artifacts (the two .tfplan files) go to `privatevpc-task-artifacts-...`.
+#   3. Set TF_APPLY=true in the project's environment variables to let builds
+#      apply (hub first, then the spoke). Left unset/false the build is
+#      plan-only, and the spoke plan is skipped until the hub state exists.
 # ---------------------------------------------------------------------------
 version: 0.2
 
@@ -21,7 +22,10 @@ env:
     TF_VERSION: "1.15.8"
     TF_IN_AUTOMATION: "true"
     TF_INPUT: "false"
-    TF_APPLY: "false"
+    # TF_APPLY is deliberately NOT set here. A value in this section would
+    # override the build project's variable, so the project (or
+    # `start-build --environment-variables-override`) owns the toggle and the
+    # build phase falls back to "false" when it is unset.
 
 phases:
   install:
@@ -37,16 +41,38 @@ phases:
     commands:
       - ( cd Training1/Perimeter && terraform validate \
           && terraform plan -input=false -lock-timeout=5m -out=perimeter.tfplan )
-      - ( cd Training1/DevOps && terraform validate \
-          && terraform plan -input=false -lock-timeout=5m -out=devops.tfplan )
+      # The spoke reads the Transit Gateway id out of the hub's S3 state, so it
+      # can only be planned once the hub has been applied. The state location is
+      # derived from the hub backend config (single source of truth) and checked
+      # before planning, so a first plan-only build is not a red build.
+      - |
+        STATE_BUCKET=$(sed -n 's/.*bucket[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' Training1/Perimeter/backend.tf | head -n 1)
+        STATE_KEY=$(sed -n 's/.*key[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' Training1/Perimeter/backend.tf | head -n 1)
+        echo "Hub state: s3://${STATE_BUCKET}/${STATE_KEY}"
+        if aws s3api head-object --bucket "${STATE_BUCKET}" --key "${STATE_KEY}" >/dev/null 2>&1; then
+          ( cd Training1/DevOps && terraform validate \
+              && terraform plan -input=false -lock-timeout=5m -out=devops.tfplan )
+        else
+          echo "Hub state object not found - skipping the DevOps (spoke) plan."
+          echo "The spoke attaches to the Transit Gateway owned by the hub, so the"
+          echo "hub has to be applied first: queue this build with TF_APPLY=true."
+        fi
       # Apply is opt-in: the hub must exist before the spoke can read its TGW id.
       - |
-        if [ "${TF_APPLY}" = "true" ]; then
-          echo "TF_APPLY=true - applying both stacks"
+        if [ "${TF_APPLY:-false}" = "true" ]; then
+          echo "TF_APPLY=true - applying the hub, then the spoke"
           ( cd Training1/Perimeter && terraform apply -input=false -lock-timeout=5m -auto-approve perimeter.tfplan )
-          ( cd Training1/DevOps && terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan )
+          if [ -f Training1/DevOps/devops.tfplan ]; then
+            ( cd Training1/DevOps && terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan )
+          else
+            # Hub state did not exist when the plan steps ran, so plan the spoke
+            # now that the hub is applied and apply it in the same build.
+            ( cd Training1/DevOps && terraform init -input=false -lock-timeout=5m \
+                && terraform plan -input=false -lock-timeout=5m -out=devops.tfplan \
+                && terraform apply -input=false -lock-timeout=5m -auto-approve devops.tfplan )
+          fi
         else
-          echo "TF_APPLY=${TF_APPLY} - plan-only build, nothing applied"
+          echo "TF_APPLY=${TF_APPLY:-false} - plan-only build, nothing applied"
         fi
 
 artifacts:

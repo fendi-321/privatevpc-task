@@ -1,0 +1,60 @@
+{
+  "name": "privatevpc-task-tf",
+  "description": "Terraform fmt/validate/plan for the Training1 hub-and-spoke network (apply is opt-in via TF_APPLY)",
+  "source": {
+    "type": "CODECOMMIT",
+    "location": "https://git-codecommit.ap-southeast-1.amazonaws.com/v1/repos/privatevpc-task",
+    "buildspec": "buildspec.yml"
+  },
+  "sourceVersion": "master",
+  "artifacts": {
+    "type": "S3",
+    "location": "privatevpc-task-artifacts-114030601209",
+    "path": "tf-plans",
+    "packaging": "ZIP",
+    "overrideArtifactName": true
+  },
+  "environment": {
+    "type": "LINUX_CONTAINER",
+    "image": "aws/codebuild/standard:7.0",
+    "computeType": "BUILD_GENERAL1_SMALL",
+    "privilegedMode": false,
+    "environmentVariables": [
+      {
+        "name": "TF_VERSION",
+        "value": "1.15.8",
+        "type": "PLAINTEXT"
+      },
+      {
+        "name": "TF_APPLY",
+        "value": "false",
+        "type": "PLAINTEXT"
+      },
+      {
+        "name": "AWS_REGION",
+        "value": "ap-southeast-1",
+        "type": "PLAINTEXT"
+      }
+    ]
+  },
+  "serviceRole": "arn:aws:iam::114030601209:role/privatevpc-task-codebuild-role",
+  "timeoutInMinutes": 30,
+  "queuedTimeoutInMinutes": 60,
+  "logsConfig": {
+    "cloudWatchLogs": {
+      "status": "ENABLED",
+      "groupName": "/aws/codebuild/privatevpc-task-tf",
+      "streamName": "build"
+    }
+  },
+  "tags": [
+    {
+      "key": "Project",
+      "value": "privatevpc-task"
+    },
+    {
+      "key": "ManagedBy",
+      "value": "ci-bootstrap"
+    }
+  ]
+}
